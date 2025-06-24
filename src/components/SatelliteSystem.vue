@@ -66,6 +66,69 @@
       </div>
     </div>
     
+    <!-- Function Buttons -->
+    <div class="function-buttons">
+      <button class="function-btn upload-btn" @click="handleUploadFile">
+        📁 上传文件
+      </button>
+      <button class="function-btn query-btn" @click="showQueryModal">
+        🔍 查询数据
+      </button>
+    </div>
+
+    <!-- Query Modal -->
+    <div v-if="queryModal.visible" class="modal-overlay" @click="closeQueryModal">
+      <div class="query-modal" @click.stop>
+        <div class="modal-header">
+          <h3>数据查询</h3>
+          <button class="close-btn" @click="closeQueryModal">×</button>
+        </div>
+        <div class="modal-content">
+          <div class="query-input-section">
+            <label for="queryInput">请输入查询条件：</label>
+            <input 
+              id="queryInput"
+              v-model="queryModal.queryText" 
+              type="text" 
+              placeholder="输入要查询的数据..."
+              class="query-input"
+              @keyup.enter="handleQuery"
+            />
+            <button class="submit-query-btn" @click="handleQuery">
+              提交查询
+            </button>
+          </div>
+          <div class="query-results-section">
+            <h4>查询结果：</h4>
+            <div class="results-container">
+              <div v-if="queryModal.loading" class="loading">查询中...</div>
+              <div v-else-if="queryModal.results.length === 0" class="no-results">
+                暂无查询结果
+              </div>
+              <div v-else class="results-list">
+                <div 
+                  v-for="(result, index) in queryModal.results" 
+                  :key="index"
+                  class="result-item"
+                >
+                  {{ result }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Upload Input (hidden) -->
+    <input 
+      ref="fileInput" 
+      type="file" 
+      style="display: none" 
+      @change="handleFileSelect"
+      accept=".txt,.csv,.json,.xml"
+    />
+
     <!-- Click outside to close menu -->
     <div 
       v-if="contextMenu.visible" 
@@ -76,21 +139,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, defineProps } from 'vue'
+
+const props = defineProps({
+  satelliteCount: {
+    type: Number,
+    default: 4,
+    validator: (value) => value >= 3 && value <= 12
+  }
+})
 
 const satelliteRefs = ref([])
+const fileInput = ref(null)
 
-const earthCenter = { x: 300, y: 300 } // system-container中心
-const satelliteRadius = 220
-const satelliteCount = 4
+const earthCenter = { x: 600, y: 600 } // system-container中心
+const satelliteRadius = 350 // 调整轨道半径，确保卫星不超出界面
 
-const satellites = ref(Array.from({ length: satelliteCount }, (_, i) => {
-  const angle = (2 * Math.PI / satelliteCount) * i - Math.PI / 4 // 使第一个卫星在正上方
-  const radius = (i === 2 || i === 3) ? 270 : satelliteRadius;
+const satellites = ref(Array.from({ length: props.satelliteCount }, (_, i) => {
+  const angle = (2 * Math.PI / props.satelliteCount) * i - Math.PI / 2 // 使第一个卫星在正上方
   return {
-    position: ['top', 'right', 'bottom', 'left'][i],
-    x: earthCenter.x + radius * Math.cos(angle),
-    y: earthCenter.y + radius * Math.sin(angle)
+    x: earthCenter.x + satelliteRadius * Math.cos(angle),
+    y: earthCenter.y + satelliteRadius * Math.sin(angle)
   }
 }))
 
@@ -114,6 +183,14 @@ const contextMenu = ref({
 })
 
 const menuItems = ref(['test1', 'test2', 'test3'])
+
+// Query Modal State
+const queryModal = ref({
+  visible: false,
+  queryText: '',
+  loading: false,
+  results: []
+})
 
 const getLineStyle = (fromIndex, toIndex) => {
   const from = satellites.value[fromIndex]
@@ -144,32 +221,39 @@ const getLineStyle = (fromIndex, toIndex) => {
 const showContextMenu = (event, index) => {
   event.stopPropagation()
   const satellite = satellites.value[index]
+  
+  // 计算卫星相对于地球中心的位置
+  const deltaX = satellite.x - earthCenter.x
+  const deltaY = satellite.y - earthCenter.y
+  
   let menuX = satellite.x + 70
   let menuY = satellite.y + 20
-  let transform = ''
   let arrowPos = 'left'
-  if (satellite.position === 'top') {
+  
+  // 根据卫星位置动态调整菜单位置
+  if (deltaY < -200) { // 上方
     menuX = satellite.x + 10
     menuY = satellite.y + 50
     arrowPos = 'top'
-  } else if (satellite.position === 'right') {
+  } else if (deltaX > 200) { // 右方
     menuX = satellite.x - 110
     menuY = satellite.y + 5
     arrowPos = 'right'
-  } else if (satellite.position === 'bottom') {
+  } else if (deltaY > 200) { // 下方
     menuX = satellite.x + 10
     menuY = satellite.y - 90
     arrowPos = 'bottom'
-  } else if (satellite.position === 'left') {
+  } else if (deltaX < -200) { // 左方
     menuX = satellite.x + 70
     menuY = satellite.y + 5
     arrowPos = 'left'
   }
+  
   contextMenu.value = {
     visible: true,
     x: menuX,
     y: menuY,
-    transform: transform,
+    transform: '',
     arrowPosition: arrowPos,
     satelliteIndex: index
   }
@@ -187,6 +271,56 @@ const handleMenuClick = (item) => {
 
 const handleClickOutside = () => {
   closeContextMenu()
+}
+
+// File Upload Functions
+const handleUploadFile = () => {
+  fileInput.value.click()
+}
+
+const handleFileSelect = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    console.log('选择的文件:', file.name)
+    alert(`已选择文件: ${file.name}\n文件大小: ${(file.size / 1024).toFixed(2)} KB\n\n文件解析功能将在后续开发中实现。`)
+    // 清空文件输入，允许重复选择同一文件
+    event.target.value = ''
+  }
+}
+
+// Query Modal Functions
+const showQueryModal = () => {
+  queryModal.value.visible = true
+  queryModal.value.queryText = ''
+  queryModal.value.results = []
+}
+
+const closeQueryModal = () => {
+  queryModal.value.visible = false
+  queryModal.value.loading = false
+}
+
+const handleQuery = () => {
+  if (!queryModal.value.queryText.trim()) {
+    alert('请输入查询条件')
+    return
+  }
+  
+  queryModal.value.loading = true
+  queryModal.value.results = []
+  
+  // 模拟查询过程
+  setTimeout(() => {
+    queryModal.value.loading = false
+    // 模拟查询结果
+    queryModal.value.results = [
+      `查询条件: "${queryModal.value.queryText}"`,
+      '结果1: 卫星数据记录 #001',
+      '结果2: 通信链路状态正常',
+      '结果3: 轨道参数已更新',
+      '注意: 这是模拟数据，实际查询功能将在后续开发中实现'
+    ]
+  }, 1500)
 }
 
 onMounted(() => {
@@ -320,8 +454,8 @@ onUnmounted(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 600px;
-  height: 600px;
+  width: 1200px;
+  height: 1200px;
 }
 
 /* Realistic Earth Styles */
@@ -330,8 +464,8 @@ onUnmounted(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 240px;
-  height: 240px;
+  width: 480px;
+  height: 480px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -745,5 +879,259 @@ onUnmounted(() => {
   width: 100vw;
   height: 100vh;
   z-index: 999;
+}
+
+/* Function Buttons */
+.function-buttons {
+  position: fixed;
+  top: 30px;
+  right: 30px;
+  z-index: 1000;
+  display: flex;
+  gap: 15px;
+}
+
+.function-btn {
+  padding: 12px 20px;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid #374151;
+  border-radius: 10px;
+  color: #f9fafb;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.function-btn:hover {
+  background: rgba(31, 41, 55, 0.9);
+  border-color: #3b82f6;
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.upload-btn:hover {
+  border-color: #10b981;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.query-btn:hover {
+  border-color: #f59e0b;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+/* Query Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(5px);
+}
+
+.query-modal {
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid #374151;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+  backdrop-filter: blur(20px);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 20px 25px;
+  border-bottom: 1px solid #374151;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(31, 41, 55, 0.5);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #f9fafb;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 5px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  color: #f9fafb;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.modal-content {
+  padding: 25px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.query-input-section {
+  margin-bottom: 25px;
+}
+
+.query-input-section label {
+  display: block;
+  color: #f3f4f6;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.query-input {
+  width: 100%;
+  padding: 12px 15px;
+  font-size: 1rem;
+  border: 2px solid #374151;
+  border-radius: 10px;
+  background: rgba(31, 41, 55, 0.8);
+  color: #f9fafb;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+  margin-bottom: 15px;
+}
+
+.query-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+}
+
+.submit-query-btn {
+  padding: 12px 25px;
+  background: linear-gradient(135deg, #3b82f6, #1e40af);
+  border: none;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+.submit-query-btn:hover {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+  transform: translateY(-2px);
+}
+
+.query-results-section h4 {
+  color: #f3f4f6;
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #374151;
+  padding-bottom: 10px;
+}
+
+.results-container {
+  min-height: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: rgba(31, 41, 55, 0.5);
+  border-radius: 10px;
+  padding: 15px;
+}
+
+.loading {
+  text-align: center;
+  color: #3b82f6;
+  font-size: 1rem;
+  padding: 20px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.no-results {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 1rem;
+  padding: 20px;
+  font-style: italic;
+}
+
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.result-item {
+  background: rgba(55, 65, 81, 0.6);
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  padding: 12px 15px;
+  color: #f9fafb;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+}
+
+.result-item:hover {
+  background: rgba(75, 85, 99, 0.8);
+  border-color: #6b7280;
+}
+
+/* Scrollbar Styling */
+.results-container::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.results-container::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.5);
+  border-radius: 3px;
+}
+
+.results-container::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.8);
+  border-radius: 3px;
+}
+
+.results-container::-webkit-scrollbar-thumb:hover,
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.9);
 }
 </style>

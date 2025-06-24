@@ -1,16 +1,16 @@
 <template>
   <div id="app">
-    <SatelliteSystem />
+    <SatelliteApp />
   </div>
 </template>
 
 <script>
-import SatelliteSystem from './components/SatelliteSystem.vue'
+import SatelliteApp from './components/SatelliteApp.vue'
 
 export default {
   name: 'App',
   components: {
-    SatelliteSystem
+    SatelliteApp
   }
 }
 </script>
