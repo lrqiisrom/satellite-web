@@ -6,14 +6,14 @@
       <div class="stars2"></div>
       <div class="stars3"></div>
     </div>
-    
+
     <!-- Main container -->
     <div class="system-container">
       <!-- Earth in the center -->
       <div class="earth-container">
         <img class="earth-img" src="@/assets/earth.jpg" alt="Earth" />
       </div>
-      
+
       <!-- Communication lines between satellites only -->
       <div class="communication-lines">
         <div
@@ -23,10 +23,10 @@
           :style="getLineStyle(i, j)"
         ></div>
       </div>
-      
+
       <!-- Satellites -->
-      <div 
-        v-for="(satellite, index) in satellites" 
+      <div
+        v-for="(satellite, index) in satellites"
         :key="index"
         :ref="el => satelliteRefs[index] = el"
         class="satellite"
@@ -40,13 +40,13 @@
           style="width: 80px; height: 80px; transform: translate(-50%, -50%); position: absolute; left: 50%; top: 50%; cursor: pointer; transition: left 0.5s, top 0.5s; z-index: 11;"
         />
       </div>
-      
+
       <!-- Context Menu -->
-      <div 
-        v-if="contextMenu.visible" 
+      <div
+        v-if="contextMenu.visible"
         class="context-menu"
-        :style="{ 
-          left: contextMenu.x + 'px', 
+        :style="{
+          left: contextMenu.x + 'px',
           top: contextMenu.y + 'px',
           transform: contextMenu.transform
         }"
@@ -54,8 +54,8 @@
       >
         <div class="menu-arrow" :class="contextMenu.arrowPosition"></div>
         <div class="menu-items">
-          <button 
-            v-for="item in menuItems" 
+          <button
+            v-for="item in menuItems"
             :key="item"
             class="menu-item"
             @click="handleMenuClick(item)"
@@ -65,11 +65,11 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Function Buttons -->
     <div class="function-buttons">
       <button class="function-btn upload-btn" @click="handleUploadFile">
-        📁 上传文件
+        📁 上传文件夹
       </button>
       <button class="function-btn query-btn" @click="showQueryModal">
         🔍 查询数据
@@ -86,10 +86,10 @@
         <div class="modal-content">
           <div class="query-input-section">
             <label for="queryInput">请输入查询条件：</label>
-            <input 
+            <input
               id="queryInput"
-              v-model="queryModal.queryText" 
-              type="text" 
+              v-model="queryModal.queryText"
+              type="text"
               placeholder="输入要查询的数据..."
               class="query-input"
               @keyup.enter="handleQuery"
@@ -106,8 +106,8 @@
                 暂无查询结果
               </div>
               <div v-else class="results-list">
-                <div 
-                  v-for="(result, index) in queryModal.results" 
+                <div
+                  v-for="(result, index) in queryModal.results"
                   :key="index"
                   class="result-item"
                 >
@@ -121,17 +121,19 @@
     </div>
 
     <!-- File Upload Input (hidden) -->
-    <input 
-      ref="fileInput" 
-      type="file" 
-      style="display: none" 
+    <input
+      ref="fileInput"
+      type="file"
+      style="display: none"
       @change="handleFileSelect"
-      accept=".txt,.csv,.json,.xml"
+      accept=".csv"
+      multiple
+      webkitdirectory
     />
 
     <!-- Click outside to close menu -->
-    <div 
-      v-if="contextMenu.visible" 
+    <div
+      v-if="contextMenu.visible"
       class="overlay"
       @click="closeContextMenu"
     ></div>
@@ -191,6 +193,10 @@ const queryModal = ref({
   loading: false,
   results: []
 })
+// New reactive variable for inverted index and file management
+const invertedIndex = ref({}); // 关键字 -> 文件ID列表(逗号分隔的字符串)
+const fileIdCounter = ref(1); // 文件ID计数器，从1开始
+const fileIdToName = ref({}); // 文件ID -> 文件名映射
 
 const getLineStyle = (fromIndex, toIndex) => {
   const from = satellites.value[fromIndex]
@@ -221,15 +227,15 @@ const getLineStyle = (fromIndex, toIndex) => {
 const showContextMenu = (event, index) => {
   event.stopPropagation()
   const satellite = satellites.value[index]
-  
+
   // 计算卫星相对于地球中心的位置
   const deltaX = satellite.x - earthCenter.x
   const deltaY = satellite.y - earthCenter.y
-  
+
   let menuX = satellite.x + 70
   let menuY = satellite.y + 20
   let arrowPos = 'left'
-  
+
   // 根据卫星位置动态调整菜单位置
   if (deltaY < -200) { // 上方
     menuX = satellite.x + 10
@@ -248,7 +254,7 @@ const showContextMenu = (event, index) => {
     menuY = satellite.y + 5
     arrowPos = 'left'
   }
-  
+
   contextMenu.value = {
     visible: true,
     x: menuX,
@@ -279,13 +285,111 @@ const handleUploadFile = () => {
 }
 
 const handleFileSelect = (event) => {
-  const file = event.target.files[0]
-  if (file) {
-    console.log('选择的文件:', file.name)
-    alert(`已选择文件: ${file.name}\n文件大小: ${(file.size / 1024).toFixed(2)} KB\n\n文件解析功能将在后续开发中实现。`)
-    // 清空文件输入，允许重复选择同一文件
-    event.target.value = ''
+  const files = Array.from(event.target.files);
+  if (files.length === 0) return;
+  
+  // 过滤出CSV文件
+  const csvFiles = files.filter(file => file.name.toLowerCase().endsWith('.csv'));
+  
+  if (csvFiles.length === 0) {
+    alert('未找到CSV文件！请选择包含CSV文件的文件夹。');
+    event.target.value = '';
+    return;
   }
+  
+  console.log(`找到 ${csvFiles.length} 个CSV文件`);
+  
+  // 重置索引和计数器
+  invertedIndex.value = {};
+  fileIdCounter.value = 1;
+  fileIdToName.value = {};
+  
+  let processedFiles = 0;
+  let totalKeywords = 0;
+  
+  // 处理每个CSV文件
+  csvFiles.forEach((file) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const content = e.target.result;
+        const fileNameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
+        const currentFileId = fileIdCounter.value;
+        
+        // 记录文件ID到文件名的映射
+        fileIdToName.value[currentFileId] = fileNameWithoutExtension;
+        
+        // 解析CSV内容
+        const rows = content.split('\n').filter(row => row.trim());
+        let fileKeywordCount = 0;
+        
+        rows.forEach((row) => {
+          const columns = row.split(',').map(col => col.trim().replace(/^"|"$/g, ''));
+          
+          columns.forEach((keyword) => {
+            if (keyword) {
+              // 建立倒排索引：关键字 -> 文件ID列表
+              if (!invertedIndex.value[keyword]) {
+                invertedIndex.value[keyword] = [];
+              }
+              
+              // 如果该关键字还没有包含当前文件ID，则添加
+              if (!invertedIndex.value[keyword].includes(currentFileId)) {
+                invertedIndex.value[keyword].push(currentFileId);
+              }
+              
+              fileKeywordCount++;
+            }
+          });
+        });
+        
+        totalKeywords += fileKeywordCount;
+        fileIdCounter.value++; // 文件ID自增
+        processedFiles++;
+        
+        console.log(`处理文件: ${file.name}, ID: ${currentFileId}, 关键字数: ${fileKeywordCount}`);
+        
+        // 当所有文件处理完成时显示结果
+        if (processedFiles === csvFiles.length) {
+          // 将数组转换为逗号分隔的字符串
+          Object.keys(invertedIndex.value).forEach(keyword => {
+            invertedIndex.value[keyword] = invertedIndex.value[keyword].join(',');
+          });
+          
+          console.log('倒排索引已建立:', invertedIndex.value);
+          console.log('文件ID映射:', fileIdToName.value);
+          
+          const sampleKeyword = Object.keys(invertedIndex.value)[0];
+          const sampleFileIds = invertedIndex.value[sampleKeyword];
+          
+          alert(`批量上传成功！\n\n📊 统计信息:\n- 处理文件数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 文件ID: [${sampleFileIds || 'N/A'}]\n- 对应文件: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
+        }
+        
+      } catch (error) {
+        console.error(`CSV解析错误 (${file.name}):`, error);
+        processedFiles++;
+        
+        if (processedFiles === csvFiles.length) {
+          alert('部分文件解析失败，请检查文件格式！');
+        }
+      }
+    };
+    
+    reader.onerror = () => {
+      console.error(`文件读取失败: ${file.name}`);
+      processedFiles++;
+      
+      if (processedFiles === csvFiles.length) {
+        alert('部分文件读取失败！');
+      }
+    };
+    
+    reader.readAsText(file, 'UTF-8');
+  });
+  
+  // 清空文件输入
+  event.target.value = '';
 }
 
 // Query Modal Functions
@@ -305,22 +409,148 @@ const handleQuery = () => {
     alert('请输入查询条件')
     return
   }
-  
+
   queryModal.value.loading = true
   queryModal.value.results = []
   
+  // 记录查询开始时间
+  const startTime = performance.now();
+
   // 模拟查询过程
   setTimeout(() => {
     queryModal.value.loading = false
-    // 模拟查询结果
-    queryModal.value.results = [
-      `查询条件: "${queryModal.value.queryText}"`,
-      '结果1: 卫星数据记录 #001',
-      '结果2: 通信链路状态正常',
-      '结果3: 轨道参数已更新',
-      '注意: 这是模拟数据，实际查询功能将在后续开发中实现'
-    ]
-  }, 1500)
+    
+    // 计算查询耗时
+    const endTime = performance.now();
+    const queryDuration = ((endTime - startTime) / 1000).toFixed(3);
+    
+    const queryInput = queryModal.value.queryText.trim();
+    
+    // 检查是否为多关键字查询（包含逗号）
+    if (queryInput.includes(',')) {
+      // 多关键字查询
+      const keywords = queryInput.split(',').map(k => k.trim()).filter(k => k);
+      
+      if (keywords.length === 0) {
+        alert('请输入有效的查询关键字');
+        return;
+      }
+      
+      // 对每个关键字查询文件ID，然后取交集
+      const keywordResults = [];
+      const missingKeywords = [];
+      
+      keywords.forEach(keyword => {
+        if (invertedIndex.value[keyword]) {
+          const fileIds = invertedIndex.value[keyword].split(',').map(id => parseInt(id));
+          keywordResults.push({ keyword, fileIds });
+        } else {
+          missingKeywords.push(keyword);
+        }
+      });
+      
+      if (keywordResults.length === 0) {
+        queryModal.value.results = [
+           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+           '❌ 所有关键字都未找到匹配',
+           '',
+           '💡 建议:',
+           '1. 检查关键字拼写',
+           '2. 尝试使用文件中的确切关键字',
+           '3. 确保已上传CSV文件夹并建立索引',
+           '',
+           `⏱️ 查询耗时: ${queryDuration} 秒`
+         ];
+        return;
+      }
+      
+      // 计算交集：找到同时包含所有找到关键字的文件ID
+      let intersectionIds = keywordResults[0].fileIds;
+      for (let i = 1; i < keywordResults.length; i++) {
+        intersectionIds = intersectionIds.filter(id => keywordResults[i].fileIds.includes(id));
+      }
+      
+      if (intersectionIds.length > 0) {
+        const fileNames = intersectionIds.map(id => fileIdToName.value[id]);
+        
+        queryModal.value.results = [
+           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+           `找到 ${intersectionIds.length} 个同时包含所有关键字的文件:`,
+           '',
+           '🔍 查询详情:',
+           ...keywordResults.map(result => `   "${result.keyword}" -> ${result.fileIds.length} 个文件`),
+           ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
+           '',
+           '📋 交集结果 - 同时包含所有关键字的文件:',
+           ...intersectionIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
+           '',
+           `🔢 文件ID: [${intersectionIds.join(', ')}]`,
+           '💡 提示: 多关键字交集查询完成',
+           '',
+           `⏱️ 查询耗时: ${queryDuration} 秒`
+         ];
+      } else {
+        queryModal.value.results = [
+           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+           '❌ 没有文件同时包含所有关键字',
+           '',
+           '🔍 各关键字查询结果:',
+           ...keywordResults.map(result => `   "${result.keyword}" -> 文件ID: [${result.fileIds.join(', ')}]`),
+           ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
+           '',
+           '💡 建议: 尝试减少关键字数量或使用更通用的关键字',
+           '',
+           `⏱️ 查询耗时: ${queryDuration} 秒`
+         ];
+      }
+    } else {
+      // 单关键字查询（原有逻辑）
+      const queryKeyword = queryInput;
+      
+      if (invertedIndex.value[queryKeyword]) {
+        const fileIds = invertedIndex.value[queryKeyword].split(',');
+        const fileNames = fileIds.map(id => fileIdToName.value[parseInt(id)]);
+        
+        queryModal.value.results = [
+           `查询关键字: "${queryKeyword}"`,
+           `找到 ${fileIds.length} 个匹配的文件:`,
+           '',
+           '📋 文件列表:',
+           ...fileIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
+           '',
+           `🔢 文件ID: [${fileIds.join(', ')}]`,
+           '💡 提示: 单关键字查询完成',
+           '',
+           `⏱️ 查询耗时: ${queryDuration} 秒`
+         ];
+      } else {
+        // 查找相似的时间格式关键字（用于调试）
+        const timeRelatedKeys = Object.keys(invertedIndex.value).filter(key => 
+          key.includes('2012/10/7') || key.includes('8:00:00')
+        ).slice(0, 10);
+        
+        queryModal.value.results = [
+           `查询关键字: "${queryKeyword}"`,
+           '❌ 未找到匹配的关键字',
+           '',
+           '🔍 调试信息 - 索引中相关的时间关键字:',
+           ...timeRelatedKeys.map(key => `   "${key}"`),
+           '',
+           '💡 建议:',
+           '1. 检查关键字拼写',
+           '2. 尝试使用文件中的确切关键字',
+           '3. 确保已上传CSV文件夹并建立索引',
+           '4. 使用逗号分隔多个关键字进行组合查询',
+           '',
+           `📊 当前索引状态:`,
+           `- 已索引文件数: ${Object.keys(fileIdToName.value).length}`,
+           `- 唯一关键字数: ${Object.keys(invertedIndex.value).length}`,
+           '',
+           `⏱️ 查询耗时: ${queryDuration} 秒`
+         ];
+      }
+    }
+  }, 800)
 }
 
 onMounted(() => {
@@ -381,7 +611,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: 
+  background-image:
     radial-gradient(2px 2px at 20px 30px, #eee, transparent),
     radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
     radial-gradient(1px 1px at 90px 40px, #fff, transparent),
@@ -408,7 +638,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: 
+  background-image:
     radial-gradient(1px 1px at 25px 25px, rgba(255,255,255,0.5), transparent),
     radial-gradient(1px 1px at 50px 75px, rgba(255,255,255,0.7), transparent),
     radial-gradient(1px 1px at 125px 45px, rgba(255,255,255,0.4), transparent),
@@ -434,7 +664,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: 
+  background-image:
     radial-gradient(1px 1px at 10px 10px, rgba(255,255,255,0.3), transparent),
     radial-gradient(1px 1px at 150px 150px, rgba(255,255,255,0.3), transparent),
     radial-gradient(1px 1px at 60px 170px, rgba(255,255,255,0.3), transparent),
@@ -489,14 +719,14 @@ onUnmounted(() => {
   height: 100%;
   border-radius: 50%;
   position: relative;
-  background: 
+  background:
     radial-gradient(circle at 25% 25%, #87ceeb 0%, #4682b4 30%, #1e40af 60%, #0f172a 100%),
-    conic-gradient(from 0deg at 50% 50%, 
-      #1e40af 0deg, #2563eb 60deg, #3b82f6 120deg, 
+    conic-gradient(from 0deg at 50% 50%,
+      #1e40af 0deg, #2563eb 60deg, #3b82f6 120deg,
       #1e40af 180deg, #1e3a8a 240deg, #2563eb 300deg, #1e40af 360deg);
   background-blend-mode: multiply;
   animation: rotate 30s linear infinite;
-  box-shadow: 
+  box-shadow:
     inset -40px -40px 80px rgba(0,0,0,0.6),
     inset 20px 20px 40px rgba(135,206,235,0.2),
     0 0 60px rgba(30,144,255,0.8),
@@ -510,7 +740,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: 
+  background:
     radial-gradient(ellipse 45px 35px at 25% 35%, #2d5016 0%, #3d6b1f 40%, transparent 70%),
     radial-gradient(ellipse 40px 30px at 70% 25%, #2d5016 0%, #4a7c2a 50%, transparent 80%),
     radial-gradient(ellipse 50px 40px at 60% 70%, #1f3d0c 0%, #2d5016 30%, #4a7c2a 60%, transparent 85%),
@@ -538,7 +768,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: 
+  background:
     radial-gradient(ellipse 30px 15px at 30% 20%, rgba(255,255,255,0.4), transparent),
     radial-gradient(ellipse 25px 12px at 70% 40%, rgba(255,255,255,0.3), transparent),
     radial-gradient(ellipse 35px 18px at 45% 65%, rgba(255,255,255,0.35), transparent),
@@ -621,13 +851,13 @@ onUnmounted(() => {
 .solar-panel {
   width: 18px;
   height: 32px;
-  background: 
+  background:
     linear-gradient(135deg, #1e3a8a 0%, #1e40af 25%, #3b82f6 50%, #60a5fa 75%, #93c5fd 100%),
     linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
   border: 1px solid #0f172a;
   position: relative;
   border-radius: 3px;
-  box-shadow: 
+  box-shadow:
     inset 0 2px 4px rgba(255,255,255,0.3),
     inset 0 -2px 4px rgba(0,0,0,0.2),
     0 4px 8px rgba(0,0,0,0.4),
@@ -641,7 +871,7 @@ onUnmounted(() => {
   left: 2px;
   right: 2px;
   bottom: 2px;
-  background: 
+  background:
     repeating-linear-gradient(
       0deg,
       rgba(255,255,255,0.2) 0px,
@@ -671,7 +901,7 @@ onUnmounted(() => {
 .satellite-core {
   width: 24px;
   height: 24px;
-  background: 
+  background:
     linear-gradient(135deg, #1f2937 0%, #374151 25%, #4b5563 50%, #6b7280 75%, #9ca3af 100%),
     radial-gradient(circle at 30% 30%, rgba(251,191,36,0.3) 0%, transparent 70%);
   border: 2px solid #f59e0b;
@@ -681,7 +911,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 
+  box-shadow:
     inset 0 2px 4px rgba(255,255,255,0.2),
     inset 0 -2px 4px rgba(0,0,0,0.3),
     0 0 15px rgba(245,158,11,0.5),
@@ -693,11 +923,11 @@ onUnmounted(() => {
 .core-light {
   width: 8px;
   height: 8px;
-  background: 
+  background:
     radial-gradient(circle at 30% 30%, #34d399 0%, #10b981 50%, #047857 100%);
   border-radius: 50%;
   animation: corePulse 2s ease-in-out infinite;
-  box-shadow: 
+  box-shadow:
     0 0 15px #10b981,
     0 0 25px rgba(16,185,129,0.6),
     inset 0 1px 2px rgba(255,255,255,0.3);
@@ -717,18 +947,18 @@ onUnmounted(() => {
 }
 
 @keyframes corePulse {
-  0%, 100% { 
-    opacity: 1; 
+  0%, 100% {
+    opacity: 1;
     transform: scale(1);
-    box-shadow: 
+    box-shadow:
       0 0 15px #10b981,
       0 0 25px rgba(16,185,129,0.6),
       inset 0 1px 2px rgba(255,255,255,0.3);
   }
-  50% { 
-    opacity: 0.7; 
+  50% {
+    opacity: 0.7;
     transform: scale(1.2);
-    box-shadow: 
+    box-shadow:
       0 0 25px #10b981,
       0 0 40px rgba(16,185,129,0.8),
       inset 0 1px 2px rgba(255,255,255,0.5);
@@ -776,7 +1006,7 @@ onUnmounted(() => {
   background: rgba(17, 24, 39, 0.95);
   border: 1px solid #374151;
   border-radius: 12px;
-  box-shadow: 
+  box-shadow:
     0 20px 40px rgba(0,0,0,0.6),
     0 0 20px rgba(59, 130, 246, 0.2),
     inset 0 1px 0 rgba(255,255,255,0.1);
