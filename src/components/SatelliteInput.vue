@@ -10,7 +10,7 @@
     <!-- Input form -->
     <div class="input-container">
       <div class="input-form">
-        <h1 class="title">卫星通信系统</h1>
+        <h1 class="title">区块链卫星网络系统</h1>
         <p class="subtitle">请输入卫星节点数量</p>
         
         <div class="form-group">

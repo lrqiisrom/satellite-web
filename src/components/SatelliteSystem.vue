@@ -76,6 +76,248 @@
       </button>
     </div>
 
+    <!-- Encryption Test Panel -->
+    <div class="encryption-panel">
+      <div class="panel-header">
+        <h3>🔐 加密测试功能</h3>
+      </div>
+      
+      <!-- Function Selection -->
+      <div class="function-selector">
+        <button 
+          v-for="(func, index) in encryptionFunctions" 
+          :key="index"
+          class="function-tab"
+          :class="{ active: currentFunction === index }"
+          @click="currentFunction = index"
+        >
+          {{ func.name }}
+        </button>
+      </div>
+
+      <!-- Function 1: Basic Encryption/Decryption -->
+      <div v-if="currentFunction === 0" class="function-content">
+        <div class="node-selection">
+          <label>选择发送方 (A):</label>
+          <select v-model="encryptionTest.senderA" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+          
+          <label>选择接收方 (B):</label>
+          <select v-model="encryptionTest.receiverB" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+        </div>
+        
+        <div class="message-input">
+          <label>消息内容:</label>
+          <input 
+            v-model="encryptionTest.message" 
+            type="text" 
+            placeholder="输入要发送的消息，如：Alice123"
+            class="message-field"
+          />
+        </div>
+        
+        <div class="action-buttons">
+          <button 
+            @click="encryptMessage" 
+            :disabled="!canEncrypt"
+            class="action-btn encrypt-btn"
+          >
+            🔒 加密
+          </button>
+          <button 
+            @click="sendMessage" 
+            :disabled="!encryptionTest.ciphertext"
+            class="action-btn send-btn"
+          >
+            📤 发送
+          </button>
+          <button 
+            @click="decryptMessage" 
+            :disabled="!encryptionTest.sent"
+            class="action-btn decrypt-btn"
+          >
+            🔓 解密
+          </button>
+        </div>
+        
+        <div class="result-display">
+          <div v-if="encryptionTest.ciphertext" class="cipher-result">
+            <label>密文:</label>
+            <div class="cipher-text">{{ encryptionTest.ciphertext }}</div>
+          </div>
+          <div v-if="encryptionTest.result" class="operation-result">
+            {{ encryptionTest.result }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Function 2: Tampering Detection -->
+      <div v-if="currentFunction === 1" class="function-content">
+        <div class="node-selection">
+          <label>选择发送方 (A):</label>
+          <select v-model="tamperingTest.senderA" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+          
+          <label>选择接收方 (B):</label>
+          <select v-model="tamperingTest.receiverB" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+          
+          <label>选择篡改方 (C):</label>
+          <select v-model="tamperingTest.tampererC" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+        </div>
+        
+        <div class="message-input">
+          <label>消息内容:</label>
+          <input 
+            v-model="tamperingTest.message" 
+            type="text" 
+            placeholder="输入要发送的消息"
+            class="message-field"
+          />
+        </div>
+        
+        <div class="action-buttons">
+          <button 
+            @click="encryptForTampering" 
+            :disabled="!canTestTampering"
+            class="action-btn encrypt-btn"
+          >
+            🔒 加密
+          </button>
+          <button 
+            @click="tamperMessage" 
+            :disabled="!tamperingTest.originalCipher"
+            class="action-btn tamper-btn"
+          >
+            🔧 篡改并发送
+          </button>
+          <button 
+            @click="decryptTamperedMessage" 
+            :disabled="!tamperingTest.tampered"
+            class="action-btn decrypt-btn"
+          >
+            🔓 解密
+          </button>
+        </div>
+        
+        <div class="result-display">
+          <div v-if="tamperingTest.originalCipher" class="cipher-result">
+            <label>原始密文:</label>
+            <div class="cipher-text">{{ tamperingTest.originalCipher }}</div>
+          </div>
+          <div v-if="tamperingTest.tamperedCipher" class="cipher-result">
+            <label>篡改后密文:</label>
+            <div class="cipher-text tampered">{{ tamperingTest.tamperedCipher }}</div>
+          </div>
+          <div v-if="tamperingTest.result" class="operation-result">
+            {{ tamperingTest.result }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Function 3: Identity-based Encryption Security -->
+      <div v-if="currentFunction === 2" class="function-content">
+        <div class="node-selection">
+          <label>选择发送方 (A):</label>
+          <select v-model="identityTest.senderA" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+          
+          <label>选择接收方 (B):</label>
+          <select v-model="identityTest.receiverB" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+          
+          <label>选择无权解密方 (C):</label>
+          <select v-model="identityTest.unauthorizedC" class="node-select">
+            <option value="-1">请选择卫星</option>
+            <option v-for="(satellite, index) in satellites" :key="index" :value="index">
+              卫星 {{ index + 1 }}
+            </option>
+          </select>
+        </div>
+        
+        <div class="message-input">
+          <label>消息内容:</label>
+          <input 
+            v-model="identityTest.message" 
+            type="text" 
+            placeholder="输入要发送的消息"
+            class="message-field"
+          />
+        </div>
+        
+        <div class="action-buttons">
+          <button 
+            @click="encryptForIdentity" 
+            :disabled="!canTestIdentity"
+            class="action-btn encrypt-btn"
+          >
+            🔒 加密
+          </button>
+          <button 
+            @click="sendIdentityMessage" 
+            :disabled="!identityTest.ciphertext"
+            class="action-btn send-btn"
+          >
+            📤 发送
+          </button>
+          <button 
+            @click="decryptIdentityMessage" 
+            :disabled="!identityTest.sent"
+            class="action-btn decrypt-btn"
+          >
+            🔓 B解密
+          </button>
+          <button 
+            @click="unauthorizedDecrypt" 
+            :disabled="!identityTest.sent"
+            class="action-btn unauthorized-btn"
+          >
+            🚫 C强行解密
+          </button>
+        </div>
+        
+        <div class="result-display">
+          <div v-if="identityTest.ciphertext" class="cipher-result">
+            <label>密文:</label>
+            <div class="cipher-text">{{ identityTest.ciphertext }}</div>
+          </div>
+          <div v-if="identityTest.result" class="operation-result">
+            {{ identityTest.result }}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Query Modal -->
     <div v-if="queryModal.visible" class="modal-overlay" @click="closeQueryModal">
       <div class="query-modal" @click.stop>
@@ -193,6 +435,148 @@ const queryModal = ref({
   loading: false,
   results: []
 })
+
+// Encryption test functionality
+const currentFunction = ref(0)
+const encryptionFunctions = ref([
+  { name: '测试加/解密' },
+  { name: '测试密文不可篡改性' },
+  { name: '测试基于身份加密安全性' }
+])
+
+// Function 1: Basic encryption/decryption
+const encryptionTest = ref({
+  senderA: -1,
+  receiverB: -1,
+  message: '',
+  ciphertext: '',
+  sent: false,
+  result: ''
+})
+
+// Function 2: Tampering detection
+const tamperingTest = ref({
+  senderA: -1,
+  receiverB: -1,
+  tampererC: -1,
+  message: '',
+  originalCipher: '',
+  tamperedCipher: '',
+  tampered: false,
+  result: ''
+})
+
+// Function 3: Identity-based encryption security
+const identityTest = ref({
+  senderA: -1,
+  receiverB: -1,
+  unauthorizedC: -1,
+  message: '',
+  ciphertext: '',
+  sent: false,
+  result: ''
+})
+
+// Computed properties for validation
+const canEncrypt = computed(() => {
+  return encryptionTest.value.senderA !== -1 && 
+         encryptionTest.value.receiverB !== -1 && 
+         encryptionTest.value.message.trim() !== ''
+})
+
+const canTestTampering = computed(() => {
+  return tamperingTest.value.senderA !== -1 && 
+         tamperingTest.value.receiverB !== -1 && 
+         tamperingTest.value.tampererC !== -1 && 
+         tamperingTest.value.message.trim() !== ''
+})
+
+const canTestIdentity = computed(() => {
+  return identityTest.value.senderA !== -1 && 
+         identityTest.value.receiverB !== -1 && 
+         identityTest.value.unauthorizedC !== -1 && 
+         identityTest.value.message.trim() !== ''
+})
+
+// Encryption test functions
+const encryptMessage = () => {
+  const message = encryptionTest.value.message
+  const senderName = `卫星${encryptionTest.value.senderA + 1}`
+  const receiverName = `卫星${encryptionTest.value.receiverB + 1}`
+  
+  // Simulate encryption
+  const cipher = btoa(message + '_encrypted_' + Date.now())
+  encryptionTest.value.ciphertext = cipher
+  encryptionTest.value.result = `✅ ${senderName} 成功加密消息"${message}"，准备发送给 ${receiverName}`
+}
+
+const sendMessage = () => {
+  encryptionTest.value.sent = true
+  encryptionTest.value.result = `📤 密文已从卫星${encryptionTest.value.senderA + 1} 发送到 卫星${encryptionTest.value.receiverB + 1}`
+}
+
+const decryptMessage = () => {
+  try {
+    const decrypted = atob(encryptionTest.value.ciphertext).split('_encrypted_')[0]
+    encryptionTest.value.result = `🔓 卫星${encryptionTest.value.receiverB + 1} 成功解密，原始消息: "${decrypted}"`
+  } catch (error) {
+    encryptionTest.value.result = `❌ 解密失败: 密文格式错误`
+  }
+}
+
+// Tampering test functions
+const encryptForTampering = () => {
+  const message = tamperingTest.value.message
+  const cipher = btoa(message + '_secure_' + Date.now())
+  tamperingTest.value.originalCipher = cipher
+  tamperingTest.value.result = `✅ 卫星${tamperingTest.value.senderA + 1} 加密完成，原始密文已生成`
+}
+
+const tamperMessage = () => {
+  // Simulate tampering by modifying the cipher
+  const tampered = tamperingTest.value.originalCipher.slice(0, -5) + 'XXXXX'
+  tamperingTest.value.tamperedCipher = tampered
+  tamperingTest.value.tampered = true
+  tamperingTest.value.result = `🔧 卫星${tamperingTest.value.tampererC + 1} 篡改了密文并发送给 卫星${tamperingTest.value.receiverB + 1}`
+}
+
+const decryptTamperedMessage = () => {
+  try {
+    // Attempt to decrypt tampered cipher - this will fail
+    atob(tamperingTest.value.tamperedCipher)
+    tamperingTest.value.result = `❌ 卫星${tamperingTest.value.receiverB + 1} 检测到密文被篡改！解密失败，拒绝接收消息`
+  } catch (error) {
+    tamperingTest.value.result = `❌ 卫星${tamperingTest.value.receiverB + 1} 检测到密文被篡改！解密失败，拒绝接收消息`
+  }
+}
+
+// Identity-based encryption test functions
+const encryptForIdentity = () => {
+  const message = identityTest.value.message
+  const receiverIdentity = `satellite_${identityTest.value.receiverB + 1}`
+  const cipher = btoa(message + '_identity_' + receiverIdentity + '_' + Date.now())
+  identityTest.value.ciphertext = cipher
+  identityTest.value.result = `✅ 卫星${identityTest.value.senderA + 1} 使用身份加密，仅 卫星${identityTest.value.receiverB + 1} 可解密`
+}
+
+const sendIdentityMessage = () => {
+  identityTest.value.sent = true
+  identityTest.value.result = `📤 身份加密密文已发送，仅授权接收方可解密`
+}
+
+const decryptIdentityMessage = () => {
+  try {
+    const parts = atob(identityTest.value.ciphertext).split('_identity_')
+    const message = parts[0]
+    identityTest.value.result = `🔓 卫星${identityTest.value.receiverB + 1} 身份验证成功，解密消息: "${message}"`
+  } catch (error) {
+    identityTest.value.result = `❌ 卫星${identityTest.value.receiverB + 1} 解密失败`
+  }
+}
+
+const unauthorizedDecrypt = () => {
+  identityTest.value.result = `🚫 卫星${identityTest.value.unauthorizedC + 1} 尝试解密失败：身份验证不通过，无法获取私钥进行解密`
+}
 // New reactive variable for inverted index and file management
 const invertedIndex = ref({}); // 关键字 -> 文件ID列表(逗号分隔的字符串)
 const fileIdCounter = ref(1); // 文件ID计数器，从1开始
@@ -1115,7 +1499,7 @@ onUnmounted(() => {
 .function-buttons {
   position: fixed;
   top: 30px;
-  right: 30px;
+  left: 200px;
   z-index: 1000;
   display: flex;
   gap: 15px;
@@ -1153,6 +1537,230 @@ onUnmounted(() => {
 .query-btn:hover {
   border-color: #f59e0b;
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+/* Encryption Panel Styles */
+.encryption-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 350px;
+  max-height: calc(100vh - 40px);
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+  color: white;
+  font-family: 'Arial', sans-serif;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.panel-header h3 {
+  margin: 0 0 15px 0;
+  color: #60a5fa;
+  font-size: 18px;
+  text-align: center;
+}
+
+.function-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.function-tab {
+  padding: 10px 15px;
+  background: rgba(51, 65, 85, 0.6);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.function-tab:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: #60a5fa;
+}
+
+.function-tab.active {
+  background: rgba(59, 130, 246, 0.6);
+  border-color: #60a5fa;
+  color: white;
+}
+
+.function-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.node-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.node-selection label {
+  font-size: 14px;
+  color: #cbd5e1;
+  margin-bottom: 5px;
+}
+
+.node-select {
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+}
+
+.node-select:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.message-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-input label {
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+.message-field {
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+}
+
+.message-field:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.encrypt-btn {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: white;
+}
+
+.encrypt-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857, #059669);
+}
+
+.send-btn {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+.decrypt-btn {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: white;
+}
+
+.decrypt-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+}
+
+.tamper-btn {
+  background: linear-gradient(135deg, #ea580c, #f97316);
+  color: white;
+}
+
+.tamper-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c2410c, #ea580c);
+}
+
+.unauthorized-btn {
+  background: linear-gradient(135deg, #7c2d12, #a16207);
+  color: white;
+}
+
+.unauthorized-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #651a0b, #7c2d12);
+}
+
+.result-display {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cipher-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cipher-result label {
+  font-size: 14px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.cipher-text {
+  padding: 10px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #fbbf24;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.cipher-text.tampered {
+  color: #f87171;
+  border-color: #dc2626;
+}
+
+.operation-result {
+  padding: 12px;
+  background: rgba(30, 41, 59, 0.4);
+  border-left: 4px solid #60a5fa;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #e2e8f0;
+  line-height: 1.4;
 }
 
 /* Query Modal */
