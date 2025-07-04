@@ -362,6 +362,21 @@
       </div>
     </div>
 
+    <!-- Upload Loading Modal -->
+    <div v-if="uploadLoading" class="modal-overlay">
+      <div class="upload-loading-modal" @click.stop>
+        <div class="modal-header">
+          <h3>文件上传中</h3>
+        </div>
+        <div class="modal-content">
+          <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>正在解析文件，请稍候...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- File Upload Input (hidden) -->
     <input
       ref="fileInput"
@@ -581,6 +596,7 @@ const unauthorizedDecrypt = () => {
 const invertedIndex = ref({}); // 关键字 -> 文件ID列表(逗号分隔的字符串)
 const fileIdCounter = ref(1); // 文件ID计数器，从1开始
 const fileIdToName = ref({}); // 文件ID -> 文件名映射
+const uploadLoading = ref(false); // 文件上传loading状态
 
 const getLineStyle = (fromIndex, toIndex) => {
   const from = satellites.value[fromIndex]
@@ -683,6 +699,9 @@ const handleFileSelect = (event) => {
   
   console.log(`找到 ${csvFiles.length} 个CSV文件`);
   
+  // 显示loading状态
+  uploadLoading.value = true;
+  
   // 重置索引和计数器
   invertedIndex.value = {};
   fileIdCounter.value = 1;
@@ -747,7 +766,11 @@ const handleFileSelect = (event) => {
           const sampleKeyword = Object.keys(invertedIndex.value)[0];
           const sampleFileIds = invertedIndex.value[sampleKeyword];
           
-          alert(`批量上传成功！\n\n📊 统计信息:\n- 处理文件数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 文件ID: [${sampleFileIds || 'N/A'}]\n- 对应文件: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
+          // 延迟2.5秒后显示成功提示并隐藏loading
+          setTimeout(() => {
+            uploadLoading.value = false;
+            alert(`批量上传成功！\n\n📊 统计信息:\n- 处理文件数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 文件ID: [${sampleFileIds || 'N/A'}]\n- 对应文件: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
+          }, 2500);
         }
         
       } catch (error) {
@@ -755,6 +778,7 @@ const handleFileSelect = (event) => {
         processedFiles++;
         
         if (processedFiles === csvFiles.length) {
+          uploadLoading.value = false;
           alert('部分文件解析失败，请检查文件格式！');
         }
       }
@@ -765,6 +789,7 @@ const handleFileSelect = (event) => {
       processedFiles++;
       
       if (processedFiles === csvFiles.length) {
+        uploadLoading.value = false;
         alert('部分文件读取失败！');
       }
     };
@@ -1971,5 +1996,46 @@ onUnmounted(() => {
 .results-container::-webkit-scrollbar-thumb:hover,
 .modal-content::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.9);
+}
+
+/* Upload Loading Modal */
+.upload-loading-modal {
+  background: rgba(31, 41, 55, 0.95);
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 400px;
+  width: 90%;
+  color: white;
+  font-family: 'Arial', sans-serif;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  text-align: center;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(96, 165, 250, 0.3);
+  border-top: 4px solid #60a5fa;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-content p {
+  margin: 0;
+  color: #f3f4f6;
+  font-size: 16px;
 }
 </style>
