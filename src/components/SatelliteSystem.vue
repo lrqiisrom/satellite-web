@@ -336,6 +336,44 @@
               class="query-input"
               @keyup.enter="handleQuery"
             />
+            
+            <!-- 区块区间选择 -->
+            <div class="block-range-section">
+              <label class="range-main-label">区块区间查询：</label>
+              <div class="range-inputs-row">
+                <div class="range-input-container">
+                  <label for="blockStart" class="range-label">起始区块</label>
+                  <input 
+                    id="blockStart"
+                    v-model.number="queryModal.blockStart"
+                    type="number"
+                    class="range-input"
+                    :min="1"
+                    :max="totalBlocks"
+                    :placeholder="totalBlocks > 0 ? '1' : '请先上传文件'"
+                    :disabled="totalBlocks === 0"
+                  />
+                </div>
+                <span class="range-separator">至</span>
+                <div class="range-input-container">
+                  <label for="blockEnd" class="range-label">结束区块</label>
+                  <input 
+                    id="blockEnd"
+                    v-model.number="queryModal.blockEnd"
+                    type="number"
+                    class="range-input"
+                    :min="queryModal.blockStart"
+                    :max="totalBlocks"
+                    :placeholder="totalBlocks > 0 ? totalBlocks.toString() : '请先上传文件'"
+                    :disabled="totalBlocks === 0"
+                  />
+                </div>
+              </div>
+              <div class="range-info">
+                <span class="info-text">总区块数：<strong>{{ totalBlocks }}</strong> | 查询范围：<strong>{{ queryModal.blockStart && queryModal.blockEnd ? `${queryModal.blockStart}-${queryModal.blockEnd}` : '请先上传文件' }}</strong></span>
+              </div>
+            </div>
+            
             <button class="submit-query-btn" @click="handleQuery">
               提交查询
             </button>
@@ -445,11 +483,13 @@ const menuItems = ref(['test1', 'test2', 'test3'])
 
 // Query Modal State
 const queryModal = ref({
-  visible: false,
-  queryText: '',
-  loading: false,
-  results: []
-})
+    visible: false,
+    queryText: '',
+    loading: false,
+    results: [],
+    blockStart: null,
+     blockEnd: null
+  })
 
 // Encryption test functionality
 const currentFunction = ref(0)
@@ -513,14 +553,43 @@ const canTestIdentity = computed(() => {
          identityTest.value.message.trim() !== ''
 })
 
+// 计算总区块数（等于文件数量）
+const totalBlocks = computed(() => {
+  return Object.keys(fileIdToName.value).length
+})
+
 // Encryption test functions
+// Helper function to generate hexadecimal ciphertext
+const generateHexCipher = (data) => {
+  const encoded = btoa(data)
+  let hex = '0x'
+  for (let i = 0; i < encoded.length; i++) {
+    hex += encoded.charCodeAt(i).toString(16).padStart(2, '0')
+  }
+  return hex
+}
+
+// Helper function to decrypt hexadecimal ciphertext
+const decryptHexCipher = (hexCipher) => {
+  if (!hexCipher.startsWith('0x')) {
+    throw new Error('Invalid hex format')
+  }
+  const hex = hexCipher.slice(2)
+  let encoded = ''
+  for (let i = 0; i < hex.length; i += 2) {
+    const charCode = parseInt(hex.substr(i, 2), 16)
+    encoded += String.fromCharCode(charCode)
+  }
+  return atob(encoded)
+}
+
 const encryptMessage = () => {
   const message = encryptionTest.value.message
   const senderName = `卫星${encryptionTest.value.senderA + 1}`
   const receiverName = `卫星${encryptionTest.value.receiverB + 1}`
   
   // Simulate encryption
-  const cipher = btoa(message + '_encrypted_' + Date.now())
+  const cipher = generateHexCipher(message + '_encrypted_' + Date.now())
   encryptionTest.value.ciphertext = cipher
   encryptionTest.value.result = `✅ ${senderName} 成功加密消息"${message}"，准备发送给 ${receiverName}`
 }
@@ -532,7 +601,7 @@ const sendMessage = () => {
 
 const decryptMessage = () => {
   try {
-    const decrypted = atob(encryptionTest.value.ciphertext).split('_encrypted_')[0]
+    const decrypted = decryptHexCipher(encryptionTest.value.ciphertext).split('_encrypted_')[0]
     encryptionTest.value.result = `🔓 卫星${encryptionTest.value.receiverB + 1} 成功解密，原始消息: "${decrypted}"`
   } catch (error) {
     encryptionTest.value.result = `❌ 解密失败: 密文格式错误`
@@ -542,7 +611,7 @@ const decryptMessage = () => {
 // Tampering test functions
 const encryptForTampering = () => {
   const message = tamperingTest.value.message
-  const cipher = btoa(message + '_secure_' + Date.now())
+  const cipher = generateHexCipher(message + '_secure_' + Date.now())
   tamperingTest.value.originalCipher = cipher
   tamperingTest.value.result = `✅ 卫星${tamperingTest.value.senderA + 1} 加密完成，原始密文已生成`
 }
@@ -569,7 +638,7 @@ const decryptTamperedMessage = () => {
 const encryptForIdentity = () => {
   const message = identityTest.value.message
   const receiverIdentity = `satellite_${identityTest.value.receiverB + 1}`
-  const cipher = btoa(message + '_identity_' + receiverIdentity + '_' + Date.now())
+  const cipher = generateHexCipher(message + '_identity_' + receiverIdentity + '_' + Date.now())
   identityTest.value.ciphertext = cipher
   identityTest.value.result = `✅ 卫星${identityTest.value.senderA + 1} 使用身份加密，仅 卫星${identityTest.value.receiverB + 1} 可解密`
 }
@@ -581,7 +650,7 @@ const sendIdentityMessage = () => {
 
 const decryptIdentityMessage = () => {
   try {
-    const parts = atob(identityTest.value.ciphertext).split('_identity_')
+    const parts = decryptHexCipher(identityTest.value.ciphertext).split('_identity_')
     const message = parts[0]
     identityTest.value.result = `🔓 卫星${identityTest.value.receiverB + 1} 身份验证成功，解密消息: "${message}"`
   } catch (error) {
@@ -806,6 +875,15 @@ const showQueryModal = () => {
   queryModal.value.visible = true
   queryModal.value.queryText = ''
   queryModal.value.results = []
+  // 初始化区块区间为全部区块
+  const currentTotalBlocks = totalBlocks.value
+  if (currentTotalBlocks > 0) {
+    queryModal.value.blockStart = 1
+    queryModal.value.blockEnd = currentTotalBlocks
+  } else {
+    queryModal.value.blockStart = null
+    queryModal.value.blockEnd = null
+  }
 }
 
 const closeQueryModal = () => {
@@ -880,20 +958,25 @@ const handleQuery = () => {
       }
       
       if (intersectionIds.length > 0) {
-        const fileNames = intersectionIds.map(id => fileIdToName.value[id]);
+        // 根据区块区间过滤文件ID
+        const filteredIds = intersectionIds.filter(id => 
+          id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
+        );
+        const fileNames = filteredIds.map(id => fileIdToName.value[id]);
         
         queryModal.value.results = [
            `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
-           `找到 ${intersectionIds.length} 个同时包含所有关键字的文件:`,
+           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
+           `找到 ${filteredIds.length} 个符合条件的文件 (总匹配: ${intersectionIds.length})`,
            '',
            '🔍 查询详情:',
            ...keywordResults.map(result => `   "${result.keyword}" -> ${result.fileIds.length} 个文件`),
            ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
            '',
-           '📋 交集结果 - 同时包含所有关键字的文件:',
-           ...intersectionIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
+           '📋 区间过滤结果:',
+           ...filteredIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
            '',
-           `🔢 文件ID: [${intersectionIds.join(', ')}]`,
+           `🔢 文件ID: [${filteredIds.join(', ')}]`,
            '💡 提示: 多关键字交集查询完成',
            '',
            `⏱️ 查询耗时: ${queryDuration} 秒`
@@ -917,17 +1000,22 @@ const handleQuery = () => {
       const queryKeyword = queryInput;
       
       if (invertedIndex.value[queryKeyword]) {
-        const fileIds = invertedIndex.value[queryKeyword].split(',');
-        const fileNames = fileIds.map(id => fileIdToName.value[parseInt(id)]);
+        const allFileIds = invertedIndex.value[queryKeyword].split(',').map(id => parseInt(id));
+        // 根据区块区间过滤文件ID
+        const filteredIds = allFileIds.filter(id => 
+          id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
+        );
+        const fileNames = filteredIds.map(id => fileIdToName.value[id]);
         
         queryModal.value.results = [
            `查询关键字: "${queryKeyword}"`,
-           `找到 ${fileIds.length} 个匹配的文件:`,
+           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
+           `找到 ${filteredIds.length} 个符合条件的文件 (总匹配: ${allFileIds.length})`,
            '',
-           '📋 文件列表:',
-           ...fileIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
+           '📋 区间过滤结果:',
+           ...filteredIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
            '',
-           `🔢 文件ID: [${fileIds.join(', ')}]`,
+           `🔢 文件ID: [${filteredIds.join(', ')}]`,
            '💡 提示: 单关键字查询完成',
            '',
            `⏱️ 查询耗时: ${queryDuration} 秒`
@@ -2031,6 +2119,119 @@ onUnmounted(() => {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* 区块区间查询样式 */
+.block-range-section {
+  margin: 20px 0;
+  padding: 16px;
+  background: rgba(55, 65, 81, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(75, 85, 99, 0.6);
+}
+
+.range-main-label {
+  display: block;
+  color: #f3f4f6;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.range-inputs-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.range-input-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.range-label {
+  color: #d1d5db;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+
+.range-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(31, 41, 55, 0.9);
+  border: 1px solid rgba(75, 85, 99, 0.8);
+  border-radius: 6px;
+  color: #f3f4f6;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.range-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  background: rgba(31, 41, 55, 1);
+}
+
+.range-input::placeholder {
+  color: #9ca3af;
+}
+
+.range-input:disabled {
+  background: rgba(17, 24, 39, 0.8);
+  border-color: rgba(55, 65, 81, 0.6);
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.range-input:disabled::placeholder {
+  color: #6b7280;
+}
+
+.range-separator {
+  color: #d1d5db;
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0 8px;
+  margin-top: 20px;
+  flex-shrink: 0;
+}
+
+.range-info {
+  padding: 8px 12px;
+  background: rgba(31, 41, 55, 0.6);
+  border-radius: 6px;
+  border-left: 3px solid #3b82f6;
+}
+
+.info-text {
+  color: #d1d5db;
+  font-size: 0.875rem;
+}
+
+.info-text strong {
+  color: #f3f4f6;
+  font-weight: 600;
+}
+
+/* 响应式设计 */
+@media (max-width: 640px) {
+  .range-inputs-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .range-separator {
+    align-self: center;
+    margin: 0;
+    padding: 8px 0;
+  }
 }
 
 .loading-content p {
