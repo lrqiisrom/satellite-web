@@ -34,7 +34,7 @@
         @click="!contextMenu.visible && showContextMenu($event, index)"
       >
         <img
-          :src="require('../assets/satellite.jpg')"
+          :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')"
           alt="卫星"
           class="satellite-img"
           style="width: 80px; height: 80px; transform: translate(-50%, -50%); position: absolute; left: 50%; top: 50%; cursor: pointer; transition: left 0.5s, top 0.5s; z-index: 11;"
@@ -68,12 +68,23 @@
           <button type="button" class="menu-item" @click="handleMenuAction('query')">
             查询数据
           </button>
-          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-test2-clicked');handleMenuAction('test2')">
-            test2
+          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')">
+            {{ getSatelliteFaultMenuText() }}
           </button>
           <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-test3-clicked');handleMenuAction('test3')">
             test3
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Repair Notification -->    
+    <div v-if="repairNotification.visible" class="repair-notification">
+      <div class="notification-content">
+        <div class="notification-icon">🔧</div>
+        <div class="notification-text">{{ repairNotification.message }}</div>
+        <div class="notification-progress">
+          <div class="progress-bar" :style="{ width: repairNotification.progress + '%' }"></div>
         </div>
       </div>
     </div>
@@ -435,12 +446,19 @@
       webkitdirectory
     />
 
+    <!-- Satellite Fault Component -->
+    <SatelliteFault
+      :satellites="satellites"
+      @satellite-fault-changed="handleSatelliteFaultChanged"
+      ref="satelliteFaultRef"
+    />
 
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, defineProps } from 'vue'
+import SatelliteFault from './SatelliteFault.vue'
 
 const props = defineProps({
   satelliteCount: {
@@ -452,6 +470,7 @@ const props = defineProps({
 
 const satelliteRefs = ref([])
 const fileInput = ref(null)
+const satelliteFaultRef = ref(null)
 
 const earthCenter = { x: 600, y: 600 } // system-container中心
 const satelliteRadius = 350 // 调整轨道半径，确保卫星不超出界面
@@ -495,6 +514,13 @@ const queryModal = ref({
     blockEnd: null,
     satelliteIndex: -1
   })
+
+// Repair Notification State
+const repairNotification = ref({
+  visible: false,
+  message: '',
+  progress: 0
+})
 
 // Encryption test functionality
 const currentFunction = ref(0)
@@ -750,8 +776,28 @@ const handleMenuAction = (action) => {
       // Don't close menu here, let the modal interaction handle it
       break
 
-    case 'test2':
-      alert(`执行 test2 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
+    case 'satellite-fault':
+      if (satelliteFaultRef.value?.isSatelliteFaulty && contextMenu.value?.satelliteIndex !== -1) {
+        try {
+          const satelliteIndex = contextMenu.value.satelliteIndex
+          const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
+          
+          if (isFaulty) {
+            // 如果卫星故障，执行修复操作
+            showRepairNotification(`卫星 ${satelliteIndex + 1} 正在启动修复程序...`, () => {
+              satelliteFaultRef.value?.repairSatellite?.(satelliteIndex)
+              showRepairNotification(`卫星 ${satelliteIndex + 1} 修复完成！状态已恢复正常。`, null, 1000)
+            })
+          } else {
+            // 如果卫星正常，执行故障操作
+            satelliteFaultRef.value?.toggleSatelliteFault?.(satelliteIndex)
+            alert(`卫星 ${satelliteIndex + 1} 状态已切换为: 故障`)
+          }
+        } catch (error) {
+          console.error('Error handling satellite fault action:', error)
+          alert('操作失败，请稍后重试')
+        }
+      }
       closeContextMenu()
       break
     case 'test3':
@@ -856,7 +902,7 @@ const handleFileSelect = (event) => {
           // 延迟2.5秒后显示成功提示并隐藏loading
           setTimeout(() => {
              uploadLoading.value = false;
-            alert(`批量上传成功！\n\n📊 统计信息:\n- 处理文件数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 文件ID: [${sampleFileIds || 'N/A'}]\n- 对应文件: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
+            alert(`区块链数据上链成功！\n\n⛓️ 区块链统计信息:\n- 生成区块数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 区块ID: [${sampleFileIds || 'N/A'}]\n- 对应区块: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
           }, 2500);
         }
         
@@ -891,6 +937,40 @@ const handleFileSelect = (event) => {
 // Query Modal Functions
 const showQueryModal = (satelliteIndex = -1) => {
   console.log('showQueryModal called for satellite', satelliteIndex);
+  
+  // 检查卫星是否故障，如果故障则先修复
+  if (satelliteIndex !== -1 && satelliteFaultRef.value?.repairSatellite) {
+    try {
+      const wasRepaired = satelliteFaultRef.value.repairSatellite(satelliteIndex)
+      if (wasRepaired) {
+        showRepairNotification(`卫星 ${satelliteIndex + 1} 检测到故障，正在启动自动修复程序...`, () => {
+          showRepairNotification(`卫星 ${satelliteIndex + 1} 修复完成！查询功能已恢复正常。`, () => {
+            // 修复完成后打开查询模态框
+            queryModal.value.visible = true
+            queryModal.value.queryText = ''
+            queryModal.value.results = []
+            queryModal.value.satelliteIndex = satelliteIndex
+            // 初始化区块区间为全部区块
+            const currentTotalBlocks = totalBlocks.value
+            if (currentTotalBlocks > 0) {
+              queryModal.value.blockStart = 1
+              queryModal.value.blockEnd = currentTotalBlocks
+            } else {
+              queryModal.value.blockStart = null
+              queryModal.value.blockEnd = null
+            }
+          }, 1000)
+        })
+        
+        return // 如果正在修复，直接返回，不立即打开模态框
+      }
+    } catch (error) {
+      console.error('Error during satellite repair in query modal:', error)
+      alert('卫星修复失败，请稍后重试')
+    }
+  }
+  
+  // 如果卫星正常，直接打开查询模态框
   queryModal.value.visible = true
   queryModal.value.queryText = ''
   queryModal.value.results = []
@@ -999,7 +1079,7 @@ const handleQuery = () => {
            '📋 区间过滤结果:',
            ...filteredIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
            '',
-           `🔢 文件ID: [${filteredIds.join(', ')}]`,
+           `🔢 区块ID: [${filteredIds.join(', ')}]`,
            '💡 提示: 多关键字交集查询完成',
            '',
            `⏱️ 查询耗时: ${queryDuration} 秒`
@@ -1010,7 +1090,7 @@ const handleQuery = () => {
            '❌ 没有文件同时包含所有关键字',
            '',
            '🔍 各关键字查询结果:',
-           ...keywordResults.map(result => `   "${result.keyword}" -> 文件ID: [${result.fileIds.join(', ')}]`),
+           ...keywordResults.map(result => `   "${result.keyword}" -> 区块ID: [${result.fileIds.join(', ')}]`),
            ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
            '',
            '💡 建议: 尝试减少关键字数量或使用更通用的关键字',
@@ -1038,7 +1118,7 @@ const handleQuery = () => {
            '📋 区间过滤结果:',
            ...filteredIds.map((id, index) => `📄 ID: ${id} | 文件: ${fileNames[index]}.csv`),
            '',
-           `🔢 文件ID: [${filteredIds.join(', ')}]`,
+           `🔢 区块ID: [${filteredIds.join(', ')}]`,
            '💡 提示: 单关键字查询完成',
            '',
            `⏱️ 查询耗时: ${queryDuration} 秒`
@@ -1071,6 +1151,55 @@ const handleQuery = () => {
       }
     }
   }, 800)
+}
+
+// 处理卫星故障状态变化
+const handleSatelliteFaultChanged = (faultData) => {
+  console.log('Satellite fault status changed:', faultData)
+  // 这里可以添加额外的逻辑，比如更新UI状态等
+}
+
+// 获取卫星故障菜单文本
+const getSatelliteFaultMenuText = () => {
+  if (contextMenu.value?.satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
+    try {
+      const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(contextMenu.value.satelliteIndex)
+      return isFaulty ? '卫星修复' : '卫星故障'
+    } catch (error) {
+      console.warn('Error getting satellite fault status:', error)
+      return '卫星故障'
+    }
+  }
+  return '卫星故障'
+}
+
+// 显示修复通知
+const showRepairNotification = (message, callback = null, duration = 1500) => {
+  repairNotification.value.visible = true
+  repairNotification.value.message = message
+  repairNotification.value.progress = 0
+  
+  // 进度条动画
+  const startTime = Date.now()
+  const updateProgress = () => {
+    const elapsed = Date.now() - startTime
+    const progress = Math.min((elapsed / duration) * 100, 100)
+    repairNotification.value.progress = progress
+    
+    if (progress < 100) {
+      requestAnimationFrame(updateProgress)
+    } else {
+      // 动画完成后隐藏通知
+      setTimeout(() => {
+        repairNotification.value.visible = false
+        if (callback) {
+          callback()
+        }
+      }, 200) // 稍微延迟一下再执行回调
+    }
+  }
+  
+  requestAnimationFrame(updateProgress)
 }
 
 onMounted(() => {
@@ -2305,5 +2434,76 @@ onUnmounted(() => {
   margin: 0;
   color: #f3f4f6;
   font-size: 16px;
+}
+
+/* Repair Notification Styles */
+.repair-notification {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
+  background: rgba(31, 41, 55, 0.95);
+  border-radius: 12px;
+  padding: 24px 32px;
+  min-width: 320px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(75, 85, 99, 0.6);
+  animation: notificationSlideIn 0.3s ease-out;
+}
+
+@keyframes notificationSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.notification-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.notification-icon {
+  font-size: 2.5rem;
+  animation: iconRotate 2s linear infinite;
+}
+
+@keyframes iconRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.notification-text {
+  color: #f3f4f6;
+  font-size: 1.1rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.notification-progress {
+  width: 100%;
+  height: 6px;
+  background: rgba(55, 65, 81, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 3px;
+  transition: width 0.1s ease-out;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
 }
 </style>
