@@ -31,7 +31,7 @@
         :ref="el => satelliteRefs[index] = el"
         class="satellite"
         :style="{ left: satellite.x + 'px', top: satellite.y + 'px' }"
-        @click="showContextMenu($event, index)"
+        @click="!contextMenu.visible && showContextMenu($event, index)"
       >
         <img
           :src="require('../assets/satellite.jpg')"
@@ -39,7 +39,18 @@
           class="satellite-img"
           style="width: 80px; height: 80px; transform: translate(-50%, -50%); position: absolute; left: 50%; top: 50%; cursor: pointer; transition: left 0.5s, top 0.5s; z-index: 11;"
         />
+        <!-- Satellite Number Label -->
+        <div class="satellite-number">
+          {{ index + 1 }}
+        </div>
       </div>
+
+      <!-- Overlay to close context menu -->
+      <div
+        v-if="contextMenu.visible"
+        class="context-menu-overlay"
+        @click="closeContextMenu"
+      ></div>
 
       <!-- Context Menu -->
       <div
@@ -50,17 +61,18 @@
           top: contextMenu.y + 'px',
           transform: contextMenu.transform
         }"
-        @click.stop
+        @click="console.log('context-menu-root-clicked')"
       >
         <div class="menu-arrow" :class="contextMenu.arrowPosition"></div>
         <div class="menu-items">
-          <button
-            v-for="item in menuItems"
-            :key="item"
-            class="menu-item"
-            @click="handleMenuClick(item)"
-          >
-            {{ item }}
+          <button type="button" class="menu-item" @click="handleMenuAction('query')">
+            查询数据
+          </button>
+          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-test2-clicked');handleMenuAction('test2')">
+            test2
+          </button>
+          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-test3-clicked');handleMenuAction('test3')">
+            test3
           </button>
         </div>
       </div>
@@ -70,9 +82,6 @@
     <div class="function-buttons">
       <button class="function-btn upload-btn" @click="handleUploadFile">
         📁 上传文件夹
-      </button>
-      <button class="function-btn query-btn" @click="showQueryModal">
-        🔍 查询数据
       </button>
     </div>
 
@@ -322,7 +331,7 @@
     <div v-if="queryModal.visible" class="modal-overlay" @click="closeQueryModal">
       <div class="query-modal" @click.stop>
         <div class="modal-header">
-          <h3>数据查询</h3>
+          <h3>{{ queryModal.satelliteIndex >= 0 ? `卫星 ${queryModal.satelliteIndex + 1} - 数据查询` : '数据查询' }}</h3>
           <button class="close-btn" @click="closeQueryModal">×</button>
         </div>
         <div class="modal-content">
@@ -426,12 +435,7 @@
       webkitdirectory
     />
 
-    <!-- Click outside to close menu -->
-    <div
-      v-if="contextMenu.visible"
-      class="overlay"
-      @click="closeContextMenu"
-    ></div>
+
   </div>
 </template>
 
@@ -479,7 +483,7 @@ const contextMenu = ref({
   satelliteIndex: -1
 })
 
-const menuItems = ref(['test1', 'test2', 'test3'])
+
 
 // Query Modal State
 const queryModal = ref({
@@ -488,7 +492,8 @@ const queryModal = ref({
     loading: false,
     results: [],
     blockStart: null,
-     blockEnd: null
+    blockEnd: null,
+    satelliteIndex: -1
   })
 
 // Encryption test functionality
@@ -738,15 +743,28 @@ const closeContextMenu = () => {
   contextMenu.value.visible = false
 }
 
-const handleMenuClick = (item) => {
-  console.log(`执行 ${item} 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
-  alert(`执行 ${item} 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
-  closeContextMenu()
+const handleMenuAction = (action) => {
+  switch (action) {
+    case 'query':
+      showQueryModal(contextMenu.value.satelliteIndex)
+      // Don't close menu here, let the modal interaction handle it
+      break
+
+    case 'test2':
+      alert(`执行 test2 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
+      closeContextMenu()
+      break
+    case 'test3':
+      alert(`执行 test3 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
+      closeContextMenu()
+      break
+    default:
+      console.warn('Unknown menu action:', action)
+      closeContextMenu()
+  }
 }
 
-const handleClickOutside = () => {
-  closeContextMenu()
-}
+
 
 // File Upload Functions
 const handleUploadFile = () => {
@@ -837,7 +855,7 @@ const handleFileSelect = (event) => {
           
           // 延迟2.5秒后显示成功提示并隐藏loading
           setTimeout(() => {
-            uploadLoading.value = false;
+             uploadLoading.value = false;
             alert(`批量上传成功！\n\n📊 统计信息:\n- 处理文件数: ${csvFiles.length}\n- 总关键字数: ${totalKeywords}\n- 唯一关键字数: ${Object.keys(invertedIndex.value).length}\n\n🔍 示例索引:\n- 关键字: "${sampleKeyword || 'N/A'}"\n- 文件ID: [${sampleFileIds || 'N/A'}]\n- 对应文件: [${sampleFileIds ? sampleFileIds.split(',').map(id => fileIdToName.value[id]).join(', ') : 'N/A'}]`);
           }, 2500);
         }
@@ -871,10 +889,12 @@ const handleFileSelect = (event) => {
 }
 
 // Query Modal Functions
-const showQueryModal = () => {
+const showQueryModal = (satelliteIndex = -1) => {
+  console.log('showQueryModal called for satellite', satelliteIndex);
   queryModal.value.visible = true
   queryModal.value.queryText = ''
   queryModal.value.results = []
+  queryModal.value.satelliteIndex = satelliteIndex
   // 初始化区块区间为全部区块
   const currentTotalBlocks = totalBlocks.value
   if (currentTotalBlocks > 0) {
@@ -887,11 +907,14 @@ const showQueryModal = () => {
 }
 
 const closeQueryModal = () => {
+  console.log('closeQueryModal called');
   queryModal.value.visible = false
   queryModal.value.loading = false
+  closeContextMenu() // Also close the context menu
 }
 
 const handleQuery = () => {
+  console.log('handleQuery called', JSON.stringify(queryModal.value));
   if (!queryModal.value.queryText.trim()) {
     alert('请输入查询条件')
     return
@@ -1051,11 +1074,11 @@ const handleQuery = () => {
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
+  
+  })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  
 })
 </script>
 
@@ -1286,7 +1309,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
-}
+  }
 
 .comm-line {
   position: absolute;
@@ -1495,22 +1518,60 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
+/* Satellite Number Label */
+.satellite-number {
+  position: absolute;
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(59, 130, 246, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(5px);
+  z-index: 12;
+  min-width: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
 
+.satellite:hover .satellite-number {
+  background: rgba(59, 130, 246, 1);
+  transform: translateX(-50%) scale(1.1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+}
 
 /* Enhanced Context Menu */
+.context-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent; /* or rgba(0,0,0,0.1) for debugging */
+  z-index: 9998; /* Lower than context menu, higher than other content */
+  pointer-events: auto;
+}
+
 .context-menu {
   position: absolute;
-  background: rgba(17, 24, 39, 0.95);
-  border: 1px solid #374151;
-  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid #475569;
+  border-radius: 16px;
   box-shadow:
-    0 20px 40px rgba(0,0,0,0.6),
-    0 0 20px rgba(59, 130, 246, 0.2),
-    inset 0 1px 0 rgba(255,255,255,0.1);
-  z-index: 1000;
-  min-width: 110px;
-  backdrop-filter: blur(15px);
-  animation: menuFadeIn 0.2s ease-out;
+    0 25px 50px rgba(0,0,0,0.7),
+    0 0 30px rgba(59, 130, 246, 0.3),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+  z-index: 9999;
+  min-width: 150px;
+  backdrop-filter: blur(20px);
+  animation: menuFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 8px;
+  pointer-events: auto;
 }
 
 @keyframes menuFadeIn {
@@ -1573,31 +1634,36 @@ onUnmounted(() => {
 .menu-item {
   display: block;
   width: 100%;
-  padding: 10px 18px;
-  color: #f9fafb;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 14px;
+  padding: 8px 12px;
+  color: #f1f5f9;
+  background: linear-gradient(135deg, rgba(51, 65, 85, 0.8), rgba(71, 85, 105, 0.6));
+  border: 1px solid rgba(148, 163, 184, 0.3);
   text-align: left;
-  font-weight: 500;
-  border-radius: 6px;
-  margin: 2px 4px;
-  position: relative;
+  font-weight: 600;
+  border-radius: 12px;
+  margin: 4px 0;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
 }
 
 .menu-item:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(99, 102, 241, 0.3));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(99, 102, 241, 0.8));
   color: #ffffff;
-  transform: translateX(2px);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-color: rgba(96, 165, 250, 0.8);
 }
 
 .menu-item:active {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.6), rgba(99, 102, 241, 0.5));
-  transform: translateX(1px);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 1), rgba(99, 102, 241, 0.9));
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6), inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
+
+
 
 .overlay {
   position: fixed;
@@ -1606,6 +1672,7 @@ onUnmounted(() => {
   width: 100vw;
   height: 100vh;
   z-index: 999;
+  pointer-events: none;
 }
 
 /* Function Buttons */
