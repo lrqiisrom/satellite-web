@@ -1168,9 +1168,9 @@ const handleDecryptAndVerify = async () => {
         `\n🔢 区块ID: [${queryModal.value.originalBlockIds.join(', ')}]` : 
         `\n🔓 解密结果: ${originalData}`
       
-      queryModal.value.decryptionResult = `✅ 解密验证成功${blockIdDisplay}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔐 密文完整性: 验证通过\n🛡️ 数字签名: 有效\n🔒 加密强度: 高级加密`
+      queryModal.value.decryptionResult = `✅ 解密验证成功${blockIdDisplay}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔐 密文完整性: 验证通过\n🛡️ 数字签名: 有效`
     } catch (error) {
-      queryModal.value.decryptionResult = `❌ 解密验证失败\n\n错误信息: ${error.message}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔒 加密强度: 高级加密`
+      queryModal.value.decryptionResult = `❌ 解密验证失败\n\n错误信息: ${error.message}\n⏱️ 验证耗时: ${verificationDuration} 秒`
     }
     
     queryModal.value.decrypting = false
@@ -1234,36 +1234,69 @@ const handleRepair = async () => {
   
   repairModal.value.repairing = true
   
-  // 模拟修复过程
-  const startTime = performance.now()
-  
-  // 根据图2数据重新调整修复时间计算函数
-  // 基于实际数据：损失率0.01-0.15，冗余度0.2-0.35，修复时间0.863-1.577秒
+  // 基于表格数据的精确映射
   const calculateRepairTime = (lossRate, redundancy) => {
-    // 基于图2数据的经验公式
-    // 修复时间 ≈ 0.5 + (损失率 * 8) - (冗余度 * 2)
-    let repairTime = 0.5 + (lossRate * 8) - (redundancy * 2)
+    // 精确的数据映射表（基于用户提供的表格数据）
+     const repairTimeTable = {
+       '0.01_0.2': 1.577,
+       '0.05_0.2': 0.73,
+       '0.1_0.2': 1.098,
+       '0.15_0.2': 0.863,
+       '0.05_0.25': 0.834,
+       '0.05_0.3': 0.934,
+       '0.05_0.35': 0.889
+     }
     
-    // 确保修复时间在合理范围内（0.8-1.6秒，匹配图2数据范围）
-    repairTime = Math.max(0.8, Math.min(1.6, repairTime))
+    // 创建查找键
+    const key = `${lossRate}_${redundancy}`
     
-    // 转换为毫秒
+    // 如果有精确匹配，直接返回
+    if (repairTimeTable[key]) {
+      return repairTimeTable[key] * 1000 // 转换为毫秒
+    }
+    
+    // 如果没有精确匹配，使用插值计算
+    // 找到最接近的数据点进行线性插值
+    const entries = Object.entries(repairTimeTable)
+    let closestEntry = null
+    let minDistance = Infinity
+    
+    entries.forEach(([tableKey, time]) => {
+      const [tableLoss, tableRedundancy] = tableKey.split('_').map(Number)
+      const distance = Math.sqrt(
+        Math.pow(lossRate - tableLoss, 2) + 
+        Math.pow(redundancy - tableRedundancy, 2)
+      )
+      if (distance < minDistance) {
+        minDistance = distance
+        closestEntry = { lossRate: tableLoss, redundancy: tableRedundancy, time }
+      }
+    })
+    
+    // 如果找到最接近的点，返回其时间值
+    if (closestEntry) {
+      return closestEntry.time * 1000 // 转换为毫秒
+    }
+    
+    // 备用计算（如果没有找到合适的数据点）
+    let repairTime = 1.0 + (lossRate * 2) - (redundancy * 1.5)
+    repairTime = Math.max(0.7, Math.min(1.6, repairTime))
     return repairTime * 1000
   }
   
   const repairDuration = calculateRepairTime(lossRate, redundancy)
   
+  // 使用计算出的精确修复时间（秒）
+  const theoreticalRepairTime = (repairDuration / 1000).toFixed(3)
+  
   setTimeout(() => {
-    const endTime = performance.now()
-    const actualRepairTime = ((endTime - startTime) / 1000).toFixed(2)
-    
     // 执行实际的卫星修复
     if (satelliteFaultRef.value?.repairSatellite) {
       satelliteFaultRef.value.repairSatellite(satelliteIndex)
     }
     
-    repairModal.value.repairTime = parseFloat(actualRepairTime)
-    repairModal.value.repairResult = `✅ 卫星 ${satelliteIndex + 1} 修复完成！\n\n📊 修复参数:\n- 损失率: ${lossRate}\n- 冗余度: ${redundancy}\n\n⏱️ 修复耗时: ${actualRepairTime} 秒\n🛠️ 修复状态: 成功\n🔧 系统状态: 正常运行`
+    repairModal.value.repairTime = parseFloat(theoreticalRepairTime)
+    repairModal.value.repairResult = `✅ 卫星 ${satelliteIndex + 1} 修复完成！\n\n📊 修复参数:\n- 损失率: ${lossRate}\n- 冗余度: ${redundancy}\n\n⏱️ 修复耗时: ${theoreticalRepairTime} 秒\n🛠️ 修复状态: 成功\n🔧 系统状态: 正常运行`
     repairModal.value.repairing = false
   }, repairDuration)
 }

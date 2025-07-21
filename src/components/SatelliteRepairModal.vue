@@ -13,11 +13,10 @@
               id="lossRate"
               v-model.number="lossRateModel"
               type="number"
-              placeholder="输入损失率..."
+              placeholder="输入损失率"
               class="repair-input"
               :min="0"
-              :max="100"
-              step="0.1"
+              step="0.01"
             />
           </div>
           
@@ -27,10 +26,10 @@
               id="redundancy"
               v-model.number="redundancyModel"
               type="number"
-              placeholder="输入冗余度..."
+              placeholder="输入冗余度"
               class="repair-input"
-              :min="1"
-              step="1"
+              :min="0"
+              step="0.01"
             />
           </div>
           
@@ -127,8 +126,8 @@ const redundancyModel = computed({
 const canRepair = computed(() => {
   return props.lossRate !== null && 
          props.redundancy !== null && 
-         props.lossRate >= 0 && 
-         props.redundancy >= 0 && 
+         props.lossRate > 0 && 
+         props.redundancy > 0 && 
          !props.repairing &&
          props.isSatelliteFaulty // 只有在卫星故障时才能修复
 })
