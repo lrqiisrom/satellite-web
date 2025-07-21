@@ -65,14 +65,21 @@
       >
         <div class="menu-arrow" :class="contextMenu.arrowPosition"></div>
         <div class="menu-items">
-          <button type="button" class="menu-item" @click="handleMenuAction('query')">
+          <button 
+            type="button" 
+            class="menu-item" 
+            :disabled="!hasUploadedFiles"
+            @click="handleMenuAction('query')"
+          >
             查询数据
           </button>
-          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')">
+          <button 
+            type="button" 
+            class="menu-item" 
+            :disabled="!hasUploadedFiles"
+            @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')"
+          >
             {{ getSatelliteFaultMenuText() }}
-          </button>
-          <button type="button" class="menu-item" @click.stop.prevent="console.log('menu-test3-clicked');handleMenuAction('test3')">
-            test3
           </button>
         </div>
       </div>
@@ -383,6 +390,21 @@
       webkitdirectory
     />
 
+    <!-- Repair Modal -->
+    <SatelliteRepairModal
+      :visible="repairModal.visible"
+      :satellite-index="repairModal.satelliteIndex"
+      :loss-rate="repairModal.lossRate"
+      :redundancy="repairModal.redundancy"
+      :repairing="repairModal.repairing"
+      :repair-result="repairModal.repairResult"
+      :repair-time="repairModal.repairTime"
+      @close="closeRepairModal"
+      @repair="handleRepair"
+      @update:loss-rate="repairModal.lossRate = $event"
+      @update:redundancy="repairModal.redundancy = $event"
+    />
+
     <!-- Satellite Fault Component -->
     <SatelliteFault
       :satellites="satellites"
@@ -397,6 +419,7 @@
 import { ref, onMounted, onUnmounted, computed, defineProps } from 'vue'
 import SatelliteFault from './SatelliteFault.vue'
 import QueryResultModal from './QueryResultModal.vue'
+import SatelliteRepairModal from './SatelliteRepairModal.vue'
 import cryptoService from '@/utils/cryptoService'
 
 const props = defineProps({
@@ -467,6 +490,17 @@ const repairNotification = ref({
   progress: 0
 })
 
+// Repair Modal State
+const repairModal = ref({
+  visible: false,
+  satelliteIndex: -1,
+  lossRate: null,
+  redundancy: null,
+  repairing: false,
+  repairResult: '',
+  repairTime: 0
+})
+
 // Encryption test functionality
 const currentFunction = ref(0)
 const encryptionFunctions = ref([
@@ -532,6 +566,11 @@ const canTestIdentity = computed(() => {
 // 计算总区块数（等于文件数量）
 const totalBlocks = computed(() => {
   return Object.keys(fileIdToName.value).length
+})
+
+// 检查是否已上传文件
+const hasUploadedFiles = computed(() => {
+  return Object.keys(fileIdToName.value).length > 0
 })
 
 // AES-256加密函数（使用统一的加密服务）
@@ -751,11 +790,8 @@ const handleMenuAction = (action) => {
           const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
           
           if (isFaulty) {
-            // 如果卫星故障，执行修复操作
-            showRepairNotification(`卫星 ${satelliteIndex + 1} 正在启动修复程序...`, () => {
-              satelliteFaultRef.value?.repairSatellite?.(satelliteIndex)
-              showRepairNotification(`卫星 ${satelliteIndex + 1} 修复完成！状态已恢复正常。`, null, 1000)
-            })
+            // 如果卫星故障，显示修复模态框
+            showRepairModal(satelliteIndex)
           } else {
             // 如果卫星正常，执行故障操作
             satelliteFaultRef.value?.toggleSatelliteFault?.(satelliteIndex)
@@ -768,10 +804,7 @@ const handleMenuAction = (action) => {
       }
       closeContextMenu()
       break
-    case 'test3':
-      alert(`执行 test3 功能，卫星编号: ${contextMenu.value.satelliteIndex + 1}`)
-      closeContextMenu()
-      break
+
     default:
       console.warn('Unknown menu action:', action)
       closeContextMenu()
@@ -910,35 +943,18 @@ const handleFileSelect = (event) => {
 const showQueryModal = (satelliteIndex = -1) => {
   console.log('showQueryModal called for satellite', satelliteIndex);
   
-  // 检查卫星是否故障，如果故障则先修复
-  if (satelliteIndex !== -1 && satelliteFaultRef.value?.repairSatellite) {
+  // 检查卫星是否故障，如果故障则显示弹窗提示
+  if (satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
     try {
-      const wasRepaired = satelliteFaultRef.value.repairSatellite(satelliteIndex)
-      if (wasRepaired) {
-        showRepairNotification(`卫星 ${satelliteIndex + 1} 检测到故障，正在启动自动修复程序...`, () => {
-          showRepairNotification(`卫星 ${satelliteIndex + 1} 修复完成！查询功能已恢复正常。`, () => {
-            // 修复完成后打开查询模态框
-            queryModal.value.visible = true
-            queryModal.value.queryText = ''
-            queryModal.value.results = []
-            queryModal.value.satelliteIndex = satelliteIndex
-            // 初始化区块区间为全部区块
-            const currentTotalBlocks = totalBlocks.value
-            if (currentTotalBlocks > 0) {
-              queryModal.value.blockStart = 1
-              queryModal.value.blockEnd = currentTotalBlocks
-            } else {
-              queryModal.value.blockStart = null
-              queryModal.value.blockEnd = null
-            }
-          }, 1000)
-        })
-        
-        return // 如果正在修复，直接返回，不立即打开模态框
+      const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
+      if (isFaulty) {
+        alert('卫星故障，请先修复！')
+        return // 直接返回，不打开查询模态框
       }
     } catch (error) {
-      console.error('Error during satellite repair in query modal:', error)
-      alert('卫星修复失败，请稍后重试')
+      console.error('Error checking satellite fault status:', error)
+      alert('检查卫星状态失败，请稍后重试')
+      return
     }
   }
   
@@ -1180,34 +1196,66 @@ const getSatelliteFaultMenuText = () => {
   return '卫星故障'
 }
 
-// 显示修复通知
-const showRepairNotification = (message, callback = null, duration = 1500) => {
-  repairNotification.value.visible = true
-  repairNotification.value.message = message
-  repairNotification.value.progress = 0
+// 显示修复模态框
+const showRepairModal = (satelliteIndex) => {
+  repairModal.value.visible = true
+  repairModal.value.satelliteIndex = satelliteIndex
+  repairModal.value.lossRate = null
+  repairModal.value.redundancy = null
+  repairModal.value.repairing = false
+  repairModal.value.repairResult = ''
+  repairModal.value.repairTime = 0
+}
+
+// 关闭修复模态框
+const closeRepairModal = () => {
+  repairModal.value.visible = false
+}
+
+// 处理修复操作
+const handleRepair = async () => {
+  const satelliteIndex = repairModal.value.satelliteIndex
+  const lossRate = repairModal.value.lossRate
+  const redundancy = repairModal.value.redundancy
   
-  // 进度条动画
-  const startTime = Date.now()
-  const updateProgress = () => {
-    const elapsed = Date.now() - startTime
-    const progress = Math.min((elapsed / duration) * 100, 100)
-    repairNotification.value.progress = progress
+  repairModal.value.repairing = true
+  
+  // 模拟修复过程
+  const startTime = performance.now()
+  
+  // 根据图2数据重新调整修复时间计算函数
+  // 基于实际数据：损失率0.01-0.15，冗余度0.2-0.35，修复时间0.863-1.577秒
+  const calculateRepairTime = (lossRate, redundancy) => {
+    // 基于图2数据的经验公式
+    // 修复时间 ≈ 0.5 + (损失率 * 8) - (冗余度 * 2)
+    let repairTime = 0.5 + (lossRate * 8) - (redundancy * 2)
     
-    if (progress < 100) {
-      requestAnimationFrame(updateProgress)
-    } else {
-      // 动画完成后隐藏通知
-      setTimeout(() => {
-        repairNotification.value.visible = false
-        if (callback) {
-          callback()
-        }
-      }, 200) // 稍微延迟一下再执行回调
-    }
+    // 确保修复时间在合理范围内（0.8-1.6秒，匹配图2数据范围）
+    repairTime = Math.max(0.8, Math.min(1.6, repairTime))
+    
+    // 转换为毫秒
+    return repairTime * 1000
   }
   
-  requestAnimationFrame(updateProgress)
+  const repairDuration = calculateRepairTime(lossRate, redundancy)
+  
+  setTimeout(() => {
+    const endTime = performance.now()
+    const actualRepairTime = ((endTime - startTime) / 1000).toFixed(2)
+    
+    // 执行实际的卫星修复
+    if (satelliteFaultRef.value?.repairSatellite) {
+      satelliteFaultRef.value.repairSatellite(satelliteIndex)
+    }
+    
+    repairModal.value.repairTime = parseFloat(actualRepairTime)
+    repairModal.value.repairResult = `✅ 卫星 ${satelliteIndex + 1} 修复完成！\n\n📊 修复参数:\n- 损失率: ${lossRate}\n- 冗余度: ${redundancy}\n\n⏱️ 修复耗时: ${actualRepairTime} 秒\n🛠️ 修复状态: 成功\n🔧 系统状态: 正常运行`
+    repairModal.value.repairing = false
+  }, repairDuration)
 }
+
+// 显示修复通知
+
 
 onMounted(() => {
   
@@ -1797,6 +1845,24 @@ onUnmounted(() => {
   background: linear-gradient(135deg, rgba(59, 130, 246, 1), rgba(99, 102, 241, 0.9));
   transform: translateY(0) scale(0.98);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.menu-item:disabled {
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.4), rgba(100, 116, 139, 0.3));
+  color: #64748b;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.menu-item:disabled:hover {
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.4), rgba(100, 116, 139, 0.3));
+  color: #64748b;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 
