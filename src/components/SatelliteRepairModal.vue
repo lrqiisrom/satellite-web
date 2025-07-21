@@ -38,8 +38,10 @@
             class="repair-btn" 
             @click="$emit('repair')"
             :disabled="!canRepair"
+            :class="{ 'satellite-normal': !isSatelliteFaulty }"
           >
             <span v-if="repairing">🔄 修复中...</span>
+            <span v-else-if="!isSatelliteFaulty">✅ 卫星正常，无需修复</span>
             <span v-else>🔧 开始修复</span>
           </button>
         </div>
@@ -101,6 +103,10 @@ const props = defineProps({
   repairTime: {
     type: Number,
     default: 0
+  },
+  isSatelliteFaulty: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -123,7 +129,8 @@ const canRepair = computed(() => {
          props.redundancy !== null && 
          props.lossRate >= 0 && 
          props.redundancy >= 0 && 
-         !props.repairing
+         !props.repairing &&
+         props.isSatelliteFaulty // 只有在卫星故障时才能修复
 })
 </script>
 
@@ -265,6 +272,17 @@ const canRepair = computed(() => {
 .repair-btn:disabled {
   background: #666;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.repair-btn.satellite-normal {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  cursor: not-allowed;
+}
+
+.repair-btn.satellite-normal:hover {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   transform: none;
   box-shadow: none;
 }

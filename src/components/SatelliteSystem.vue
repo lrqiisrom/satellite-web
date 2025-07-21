@@ -399,6 +399,7 @@
       :repairing="repairModal.repairing"
       :repair-result="repairModal.repairResult"
       :repair-time="repairModal.repairTime"
+      :is-satellite-faulty="getSatelliteFaultStatus(repairModal.satelliteIndex)"
       @close="closeRepairModal"
       @repair="handleRepair"
       @update:loss-rate="repairModal.lossRate = $event"
@@ -1194,6 +1195,19 @@ const getSatelliteFaultMenuText = () => {
     }
   }
   return '卫星故障'
+}
+
+// 获取卫星故障状态
+const getSatelliteFaultStatus = (satelliteIndex) => {
+  if (satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
+    try {
+      return satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
+    } catch (error) {
+      console.warn('Error getting satellite fault status:', error)
+      return true // 默认返回故障状态，允许修复
+    }
+  }
+  return true // 默认返回故障状态，允许修复
 }
 
 // 显示修复模态框
