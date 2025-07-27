@@ -1508,7 +1508,7 @@ onUnmounted(() => {
 .system-container {
   position: absolute;
   top: 50%;
-  left: 50%;
+  left: 40%;
   transform: translate(-50%, -50%);
   width: 1200px;
   height: 1200px;
