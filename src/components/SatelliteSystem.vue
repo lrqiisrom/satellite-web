@@ -8,7 +8,7 @@
     </div>
 
     <!-- Main container -->
-    <div class="system-container">
+    <div class="system-container" :style="{ width: systemContainerSize.width + 'px', height: systemContainerSize.height + 'px' }">
       <!-- Earth in the center -->
       <div class="earth-container">
         <img class="earth-img" src="@/assets/earth.jpg" alt="Earth" />
@@ -37,7 +37,6 @@
           :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')"
           alt="卫星"
           class="satellite-img"
-          style="width: 80px; height: 80px; transform: translate(-50%, -50%); position: absolute; left: 50%; top: 50%; cursor: pointer; transition: left 0.5s, top 0.5s; z-index: 11;"
         />
         <!-- Satellite Number Label -->
         <div class="satellite-number">
@@ -435,16 +434,43 @@ const satelliteRefs = ref([])
 const fileInput = ref(null)
 const satelliteFaultRef = ref(null)
 
-const earthCenter = { x: 600, y: 600 } // system-container中心
-const satelliteRadius = 350 // 调整轨道半径，确保卫星不超出界面
+const windowWidth = ref(window.innerWidth)
+const windowHeight = ref(window.innerHeight)
 
-const satellites = ref(Array.from({ length: props.satelliteCount }, (_, i) => {
-  const angle = (2 * Math.PI / props.satelliteCount) * i - Math.PI / 2 // 使第一个卫星在正上方
+const handleResize = () => {
+  windowWidth.value = window.innerWidth;
+  windowHeight.value = window.innerHeight;
+};
+
+const systemContainerSize = computed(() => {
+    const size = Math.min(windowWidth.value * 0.9, windowHeight.value * 0.9, 1200);
+    return { width: size, height: size };
+});
+
+const earthCenter = computed(() => {
+  const centerX = systemContainerSize.value.width / 2;
+  const centerY = systemContainerSize.value.height / 2;
   return {
-    x: earthCenter.x + satelliteRadius * Math.cos(angle),
-    y: earthCenter.y + satelliteRadius * Math.sin(angle)
-  }
-}))
+    x: centerX,
+    y: centerY
+  };
+});
+
+const satelliteRadius = computed(() => systemContainerSize.value.width * 0.5);
+
+const satellites = computed(() => {
+  const count = props.satelliteCount;
+  const radius = satelliteRadius.value;
+  const centerX = earthCenter.value.x;
+  const centerY = earthCenter.value.y;
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (2 * Math.PI / count) * i - Math.PI / 2;
+    return {
+      x: centerX + radius * Math.cos(angle),
+      y: centerY + radius * Math.sin(angle),
+    };
+  });
+});
 
 const satelliteLinePairs = computed(() => {
   const pairs = [];
@@ -737,8 +763,8 @@ const showContextMenu = (event, index) => {
   const satellite = satellites.value[index]
 
   // 计算卫星相对于地球中心的位置
-  const deltaX = satellite.x - earthCenter.x
-  const deltaY = satellite.y - earthCenter.y
+  const deltaX = satellite.x - earthCenter.value.x
+  const deltaY = satellite.y - earthCenter.value.y
 
   let menuX = satellite.x + 70
   let menuY = satellite.y + 20
@@ -1305,11 +1331,12 @@ const handleRepair = async () => {
 
 
 onMounted(() => {
-  
-  })
+  window.addEventListener('resize', handleResize);
+  handleResize(); // Initial call
+});
 
 onUnmounted(() => {
-  
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
@@ -1432,11 +1459,10 @@ onUnmounted(() => {
 
 .system-container {
   position: absolute;
-  top: 50%;
   left: 50%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  width: 1200px;
-  height: 1200px;
+  /* Size is now controlled by inline style */
 }
 
 /* Realistic Earth Styles */
@@ -1445,25 +1471,29 @@ onUnmounted(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 480px;
-  height: 480px;
+  width: 70%; /* Use percentage for responsive size */
+  height: 70%; /* Use percentage for responsive size */
   z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .earth-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   box-shadow: 0 0 60px 20px #1e90ff44, 0 0 0 8px #1e90ff22;
-  animation: earth-rotate 8s linear infinite;
+  /* animation: earth-rotate 8s linear infinite; */ /* Animation removed */
   object-fit: cover;
+  transform: translate(-50%, -50%);
 }
-@keyframes earth-rotate {
+/* @keyframes earth-rotate {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
+} */
 
 .earth {
   width: 100%;
@@ -1569,6 +1599,30 @@ onUnmounted(() => {
 .satellite:hover {
   transform: scale(1.15);
   filter: brightness(1.3) drop-shadow(0 0 15px rgba(59, 130, 246, 0.6));
+}
+
+.satellite-img {
+  width: 80px;
+  height: 80px;
+  transform: translate(-50%, -50%);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  cursor: pointer;
+  transition: left 0.5s, top 0.5s;
+  z-index: 11;
+}
+
+@media (max-width: 768px) {
+  .satellite-img {
+    width: 50px;
+    height: 50px;
+  }
+  .satellite-number {
+    font-size: 10px;
+    padding: 2px 4px;
+    bottom: -20px;
+  }
 }
 
 .satellite.top {
