@@ -12,6 +12,7 @@
       <!-- Earth in the center -->
       <div class="earth-container">
         <img class="earth-img" src="@/assets/earth.jpg" alt="Earth" />
+        <div class="earth-orbit-circle"></div>
       </div>
 
       <!-- Communication lines between satellites only -->
@@ -21,6 +22,7 @@
           :key="'full-line-' + i + '-' + j"
           class="comm-line"
           :style="getLineStyle(i, j)"
+          v-show="isAnimationPaused"
         ></div>
       </div>
 
@@ -30,14 +32,14 @@
         :key="index"
         :ref="el => satelliteRefs[index] = el"
         class="satellite"
-        :style="{ left: satellite.x + 'px', top: satellite.y + 'px' }"
+        :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }"
         @click="!contextMenu.visible && showContextMenu($event, index)"
       >
         <img
           :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')"
           alt="卫星"
           class="satellite-img"
-          style="width: 80px; height: 80px; transform: translate(-50%, -50%); position: absolute; left: 50%; top: 50%; cursor: pointer; transition: left 0.5s, top 0.5s; z-index: 11;"
+          style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;"
         />
         <!-- Satellite Number Label -->
         <div class="satellite-number">
@@ -417,7 +419,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, defineProps } from 'vue'
+import { ref, onMounted, onUnmounted, computed, defineProps, watch } from 'vue'
 import SatelliteFault from './SatelliteFault.vue'
 import QueryResultModal from './QueryResultModal.vue'
 import SatelliteRepairModal from './SatelliteRepairModal.vue'
@@ -436,15 +438,49 @@ const fileInput = ref(null)
 const satelliteFaultRef = ref(null)
 
 const earthCenter = { x: 600, y: 600 } // system-container中心
-const satelliteRadius = 350 // 调整轨道半径，确保卫星不超出界面
+const satelliteRadius = 325 // 卫星轨道半径，与红圈半径一致（650px/2）
 
-const satellites = ref(Array.from({ length: props.satelliteCount }, (_, i) => {
-  const angle = (2 * Math.PI / props.satelliteCount) * i - Math.PI / 2 // 使第一个卫星在正上方
-  return {
-    x: earthCenter.x + satelliteRadius * Math.cos(angle),
-    y: earthCenter.y + satelliteRadius * Math.sin(angle)
+const rotationAngle = ref(0);
+const satellites = ref([]);
+
+const updateSatellitePositions = () => {
+  const newSatellites = [];
+  for (let i = 0; i < props.satelliteCount; i++) {
+    const initialAngle = (2 * Math.PI / props.satelliteCount) * i - Math.PI / 2; // 使第一个卫星在正上方
+    const currentAngle = initialAngle + rotationAngle.value; // 加上旋转角度
+    // 卫星的x,y坐标是卫星的中心点，因为卫星图片使用了transform: translate(-50%, -50%)进行居中定位
+    newSatellites.push({
+      x: earthCenter.x + satelliteRadius * Math.cos(currentAngle),
+      y: earthCenter.y + satelliteRadius * Math.sin(currentAngle)
+    });
   }
-}))
+  satellites.value = newSatellites;
+};
+
+let animationFrameId = null;
+const animateSatellites = () => {
+  rotationAngle.value += 0.002; // 调整旋转速度（减慢）
+  if (rotationAngle.value >= 2 * Math.PI) {
+    rotationAngle.value -= 2 * Math.PI;
+  }
+  updateSatellitePositions();
+  animationFrameId = requestAnimationFrame(animateSatellites);
+};
+
+onMounted(() => {
+  updateSatellitePositions(); // 初始化卫星位置
+  animateSatellites(); // 开始动画
+});
+
+onUnmounted(() => {
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+});
+
+watch(() => props.satelliteCount, () => {
+  updateSatellitePositions();
+});
 
 const satelliteLinePairs = computed(() => {
   const pairs = [];
@@ -709,11 +745,11 @@ const uploadLoading = ref(false); // 文件上传loading状态
 const getLineStyle = (fromIndex, toIndex) => {
   const from = satellites.value[fromIndex]
   const to = satellites.value[toIndex]
-  // 卫星中心点坐标（图片80x80，中心点+40,+40）
-  const fromCenterX = from.x + 40;
-  const fromCenterY = from.y + 40;
-  const toCenterX = to.x + 40;
-  const toCenterY = to.y + 40;
+  // 卫星中心点坐标（卫星的x,y就是中心点坐标）
+  const fromCenterX = from.x;
+  const fromCenterY = from.y;
+  const toCenterX = to.x;
+  const toCenterY = to.y;
   const deltaX = toCenterX - fromCenterX
   const deltaY = toCenterY - fromCenterY
   const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
@@ -723,18 +759,33 @@ const getLineStyle = (fromIndex, toIndex) => {
     left: fromCenterX + 'px',
     top: fromCenterY + 'px',
     width: distance + 'px',
-    height: '2px',
+    height: '1px',
     transformOrigin: '0 50%',
     transform: `rotate(${angle}deg)`,
     background: 'none',
-    borderTop: '2px dashed #FFFFFF',
-    zIndex: 10
+    borderTop: '1px dashed rgba(255,255,255,0.8)',
+    boxShadow: '0 0 5px rgba(255,255,255,0.5)',
+    zIndex: 9
   }
 }
+
+// 添加一个变量来保存动画状态
+let isAnimationPaused = false;
 
 const showContextMenu = (event, index) => {
   event.stopPropagation()
   const satellite = satellites.value[index]
+
+  // 暂停卫星动画
+  if (animationFrameId && !isAnimationPaused) {
+    // 立即取消当前动画帧
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+    isAnimationPaused = true;
+    
+    // 确保卫星位置不再变化，通过重新计算一次位置并保持不变
+    updateSatellitePositions();
+  }
 
   // 计算卫星相对于地球中心的位置
   const deltaX = satellite.x - earthCenter.x
@@ -775,6 +826,12 @@ const showContextMenu = (event, index) => {
 
 const closeContextMenu = () => {
   contextMenu.value.visible = false
+  
+  // 恢复卫星动画
+  if (isAnimationPaused && !animationFrameId) {
+    isAnimationPaused = false;
+    animateSatellites();
+  }
 }
 
 const handleMenuAction = (action) => {
@@ -950,11 +1007,15 @@ const showQueryModal = (satelliteIndex = -1) => {
       const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
       if (isFaulty) {
         alert('卫星故障，请先修复！')
-        return // 直接返回，不打开查询模态框
+        // 如果卫星故障，不打开查询模态框，但需要关闭上下文菜单并恢复动画
+        closeContextMenu()
+        return
       }
     } catch (error) {
       console.error('Error checking satellite fault status:', error)
       alert('检查卫星状态失败，请稍后重试')
+      // 如果检查失败，不打开查询模态框，但需要关闭上下文菜单并恢复动画
+      closeContextMenu()
       return
     }
   }
@@ -1219,11 +1280,20 @@ const showRepairModal = (satelliteIndex) => {
   repairModal.value.repairing = false
   repairModal.value.repairResult = ''
   repairModal.value.repairTime = 0
+  
+  // 关闭上下文菜单，但不恢复动画，因为修复模态框仍然打开
+  contextMenu.value.visible = false
 }
 
 // 关闭修复模态框
 const closeRepairModal = () => {
   repairModal.value.visible = false
+  
+  // 恢复卫星动画
+  if (isAnimationPaused && !animationFrameId) {
+    isAnimationPaused = false;
+    animateSatellites();
+  }
 }
 
 // 处理修复操作
@@ -1298,6 +1368,11 @@ const handleRepair = async () => {
     repairModal.value.repairTime = parseFloat(theoreticalRepairTime)
     repairModal.value.repairResult = `✅ 卫星 ${satelliteIndex + 1} 修复完成！\n\n📊 修复参数:\n- 损失率: ${lossRate}\n- 冗余度: ${redundancy}\n\n⏱️ 修复耗时: ${theoreticalRepairTime} 秒\n🛠️ 修复状态: 成功\n🔧 系统状态: 正常运行`
     repairModal.value.repairing = false
+    
+    // 3秒后自动关闭修复模态框并恢复动画
+    setTimeout(() => {
+      closeRepairModal()
+    }, 3000)
   }, repairDuration)
 }
 
@@ -1457,12 +1532,20 @@ onUnmounted(() => {
   height: 100%;
   border-radius: 50%;
   box-shadow: 0 0 60px 20px #1e90ff44, 0 0 0 8px #1e90ff22;
-  animation: earth-rotate 8s linear infinite;
   object-fit: cover;
 }
-@keyframes earth-rotate {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+
+.earth-orbit-circle {
+  position: absolute;
+  width: 650px; /* 调整大小以适应地球外侧 */
+  height: 650px; /* 调整大小以适应地球外侧 */
+  border: 2px solid transparent; /* 将红色边框改为透明 */
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  display: none; /* 隐藏红色圆圈 */
+  transform: translate(-50%, -50%);
+  z-index: 1;
 }
 
 .earth {
@@ -1558,16 +1641,14 @@ onUnmounted(() => {
 /* Enhanced Realistic Satellite Styles */
 .satellite {
   position: absolute;
-  width: 60px;
+  width: 40px;
   height: 40px;
   cursor: pointer;
-  transition: all 0.3s ease;
   z-index: 10;
   filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
 }
 
 .satellite:hover {
-  transform: scale(1.15);
   filter: brightness(1.3) drop-shadow(0 0 15px rgba(59, 130, 246, 0.6));
 }
 
@@ -1752,9 +1833,9 @@ onUnmounted(() => {
 /* Satellite Number Label */
 .satellite-number {
   position: absolute;
-  bottom: -25px;
+  bottom: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, 100%);
   background: rgba(59, 130, 246, 0.9);
   color: white;
   padding: 4px 8px;
@@ -1772,7 +1853,7 @@ onUnmounted(() => {
 
 .satellite:hover .satellite-number {
   background: rgba(59, 130, 246, 1);
-  transform: translateX(-50%) scale(1.1);
+  transform: translate(-50%, 100%) scale(1.1);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
 }
 
