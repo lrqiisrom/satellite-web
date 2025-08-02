@@ -130,19 +130,64 @@ const getSatelliteBlockContent = (satelliteIndex, blockIndex, block) => {
   if (status === 'empty') {
     return 'null'; // 不出块显示null
   } else if (status === 'error') {
-    // 错误块显示错误的哈希值
-    return formatEncryptedData(generateErrorHash(block.encryptedData));
+    // 错误块显示错误的哈希值，传入卫星索引确保同一行中不同节点的错误区块有不同的哈希值
+    return formatEncryptedData(generateErrorHash(block.encryptedData, satelliteIndex));
   } else {
     // 正常块显示正常内容
     return formatEncryptedData(block.encryptedData);
   }
 };
 
-// 生成错误的哈希值
-const generateErrorHash = (originalHash) => {
-  // 在原始哈希后添加随机字符串再哈希
-  const randomSuffix = Math.random().toString(36).substring(2, 8);
-  return originalHash + randomSuffix;
+// 错误哈希值缓存 - 使用卫星索引和原始哈希的组合作为键
+const errorHashCache = ref({});
+
+// 生成错误的哈希值 - 在原始哈希的基础上，添加随机数后再次哈希
+// 添加satelliteIndex参数，确保同一行中不同节点的错误区块有不同的哈希值
+const generateErrorHash = (originalHash, satelliteIndex = null) => {
+  // 创建缓存键，包含卫星索引
+  const cacheKey = satelliteIndex ? `${originalHash}-${satelliteIndex}` : originalHash;
+  
+  // 检查缓存中是否已有该哈希值的错误版本
+  if (errorHashCache.value[cacheKey]) {
+    return errorHashCache.value[cacheKey];
+  }
+  
+  // 如果没有原始哈希值，返回默认错误哈希
+  if (!originalHash) return 'error_hash';
+  
+  try {
+    // 在原始哈希末尾添加0-20的随机数和卫星索引（如果有）
+    const randomNum = Math.floor(Math.random() * 21); // 0-20的随机数
+    const modifiedData = satelliteIndex ? 
+      `${originalHash}${randomNum}${satelliteIndex}` : 
+      `${originalHash}${randomNum}`;
+    
+    // 使用简化的哈希算法（非异步）来避免在模板中使用异步函数的问题
+    // 这是一个简单的字符串哈希函数
+    let hash = 0;
+    for (let i = 0; i < modifiedData.length; i++) {
+      const char = modifiedData.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    
+    // 转换为16进制字符串，并填充到64个字符（与SHA-256哈希长度相同）
+    let errorHash = Math.abs(hash).toString(16);
+    
+    // 通过重复哈希值并截取来生成64个字符的哈希值
+    while (errorHash.length < 64) {
+      errorHash += errorHash;
+    }
+    errorHash = errorHash.substring(0, 64);
+    
+    // 缓存结果
+    errorHashCache.value[cacheKey] = errorHash;
+    
+    return errorHash;
+  } catch (error) {
+    console.error('生成错误哈希时出错:', error);
+    return 'error_' + originalHash.substring(0, 6); // 发生错误时的备用方案
+  }
 };
 
 // 使用SHA-256哈希替代加密，显著提高处理速度
