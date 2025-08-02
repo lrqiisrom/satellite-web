@@ -7,6 +7,9 @@
       <div class="stars3"></div>
     </div>
 
+    <!-- Blockchain Upload Visualizer -->
+    <BlockchainUploadVisualizer ref="blockchainVisualizerRef" :satellite-count="props.satelliteCount" :uploaded-data="uploadedData" @upload-complete="handleUploadComplete" />
+
     <!-- Main container -->
     <div class="system-container">
       <!-- Earth in the center -->
@@ -17,30 +20,12 @@
 
       <!-- Communication lines between satellites only -->
       <div class="communication-lines">
-        <div
-          v-for="[i, j] in satelliteLinePairs"
-          :key="'full-line-' + i + '-' + j"
-          class="comm-line"
-          :style="getLineStyle(i, j)"
-          v-show="isAnimationPaused"
-        ></div>
+        <div v-for="[i, j] in satelliteLinePairs" :key="'full-line-' + i + '-' + j" class="comm-line" :style="getLineStyle(i, j)" v-show="isAnimationPaused"></div>
       </div>
 
       <!-- Satellites -->
-      <div
-        v-for="(satellite, index) in satellites"
-        :key="index"
-        :ref="el => satelliteRefs[index] = el"
-        class="satellite"
-        :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }"
-        @click="!contextMenu.visible && showContextMenu($event, index)"
-      >
-        <img
-          :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')"
-          alt="卫星"
-          class="satellite-img"
-          style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;"
-        />
+      <div v-for="(satellite, index) in satellites" :key="index" :ref="el => satelliteRefs[index] = el" class="satellite" :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }" @click="!contextMenu.visible && showContextMenu($event, index)">
+        <img :src="isMaliciousSatellite(index + 1) ? require('../assets/satellite_error.jpg') : (satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg'))" alt="卫星" class="satellite-img" style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;" />
         <!-- Satellite Number Label -->
         <div class="satellite-number">
           {{ index + 1 }}
@@ -48,46 +33,27 @@
       </div>
 
       <!-- Overlay to close context menu -->
-      <div
-        v-if="contextMenu.visible"
-        class="context-menu-overlay"
-        @click="closeContextMenu"
-      ></div>
+      <div v-if="contextMenu.visible" class="context-menu-overlay" @click="closeContextMenu"></div>
 
       <!-- Context Menu -->
-      <div
-        v-if="contextMenu.visible"
-        class="context-menu"
-        :style="{
+      <div v-if="contextMenu.visible" class="context-menu" :style="{
           left: contextMenu.x + 'px',
           top: contextMenu.y + 'px',
           transform: contextMenu.transform
-        }"
-        @click="console.log('context-menu-root-clicked')"
-      >
+        }" @click="console.log('context-menu-root-clicked')">
         <div class="menu-arrow" :class="contextMenu.arrowPosition"></div>
         <div class="menu-items">
-          <button 
-            type="button" 
-            class="menu-item" 
-            :disabled="!hasUploadedFiles"
-            @click="handleMenuAction('query')"
-          >
+          <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click="handleMenuAction('query')">
             查询数据
           </button>
-          <button 
-            type="button" 
-            class="menu-item" 
-            :disabled="!hasUploadedFiles"
-            @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')"
-          >
+          <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')">
             {{ getSatelliteFaultMenuText() }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Repair Notification -->    
+    <!-- Repair Notification -->
     <div v-if="repairNotification.visible" class="repair-notification">
       <div class="notification-content">
         <div class="notification-icon">🔧</div>
@@ -110,16 +76,10 @@
       <div class="panel-header">
         <h3>🔐 加密测试功能</h3>
       </div>
-      
+
       <!-- Function Selection -->
       <div class="function-selector">
-        <button 
-          v-for="(func, index) in encryptionFunctions" 
-          :key="index"
-          class="function-tab"
-          :class="{ active: currentFunction === index }"
-          @click="currentFunction = index"
-        >
+        <button v-for="(func, index) in encryptionFunctions" :key="index" class="function-tab" :class="{ active: currentFunction === index }" @click="currentFunction = index">
           {{ func.name }}
         </button>
       </div>
@@ -134,7 +94,7 @@
               卫星 {{ index + 1 }}
             </option>
           </select>
-          
+
           <label>选择接收方 (B):</label>
           <select v-model="encryptionTest.receiverB" class="node-select">
             <option value="-1">请选择卫星</option>
@@ -143,41 +103,24 @@
             </option>
           </select>
         </div>
-        
+
         <div class="message-input">
           <label>消息内容:</label>
-          <input 
-            v-model="encryptionTest.message" 
-            type="text" 
-            placeholder="输入要发送的消息，如：Alice123"
-            class="message-field"
-          />
+          <input v-model="encryptionTest.message" type="text" placeholder="输入要发送的消息，如：Alice123" class="message-field" />
         </div>
-        
+
         <div class="action-buttons">
-          <button 
-            @click="encryptMessage" 
-            :disabled="!canEncrypt"
-            class="action-btn encrypt-btn"
-          >
+          <button @click="encryptMessage" :disabled="!canEncrypt" class="action-btn encrypt-btn">
             🔒 加密
           </button>
-          <button 
-            @click="sendMessage" 
-            :disabled="!encryptionTest.ciphertext"
-            class="action-btn send-btn"
-          >
+          <button @click="sendMessage" :disabled="!encryptionTest.ciphertext" class="action-btn send-btn">
             📤 发送
           </button>
-          <button 
-            @click="decryptMessage" 
-            :disabled="!encryptionTest.sent"
-            class="action-btn decrypt-btn"
-          >
+          <button @click="decryptMessage" :disabled="!encryptionTest.sent" class="action-btn decrypt-btn">
             🔓 解密
           </button>
         </div>
-        
+
         <div class="result-display">
           <div v-if="encryptionTest.ciphertext" class="cipher-result">
             <label>密文:</label>
@@ -199,7 +142,7 @@
               卫星 {{ index + 1 }}
             </option>
           </select>
-          
+
           <label>选择接收方 (B):</label>
           <select v-model="tamperingTest.receiverB" class="node-select">
             <option value="-1">请选择卫星</option>
@@ -207,7 +150,7 @@
               卫星 {{ index + 1 }}
             </option>
           </select>
-          
+
           <label>选择篡改方 (C):</label>
           <select v-model="tamperingTest.tampererC" class="node-select">
             <option value="-1">请选择卫星</option>
@@ -216,41 +159,24 @@
             </option>
           </select>
         </div>
-        
+
         <div class="message-input">
           <label>消息内容:</label>
-          <input 
-            v-model="tamperingTest.message" 
-            type="text" 
-            placeholder="输入要发送的消息"
-            class="message-field"
-          />
+          <input v-model="tamperingTest.message" type="text" placeholder="输入要发送的消息" class="message-field" />
         </div>
-        
+
         <div class="action-buttons">
-          <button 
-            @click="encryptForTampering" 
-            :disabled="!canTestTampering"
-            class="action-btn encrypt-btn"
-          >
+          <button @click="encryptForTampering" :disabled="!canTestTampering" class="action-btn encrypt-btn">
             🔒 加密
           </button>
-          <button 
-            @click="tamperMessage" 
-            :disabled="!tamperingTest.originalCipher"
-            class="action-btn tamper-btn"
-          >
+          <button @click="tamperMessage" :disabled="!tamperingTest.originalCipher" class="action-btn tamper-btn">
             🔧 篡改并发送
           </button>
-          <button 
-            @click="decryptTamperedMessage" 
-            :disabled="!tamperingTest.tampered"
-            class="action-btn decrypt-btn"
-          >
+          <button @click="decryptTamperedMessage" :disabled="!tamperingTest.tampered" class="action-btn decrypt-btn">
             🔓 解密
           </button>
         </div>
-        
+
         <div class="result-display">
           <div v-if="tamperingTest.originalCipher" class="cipher-result">
             <label>原始密文:</label>
@@ -276,7 +202,7 @@
               卫星 {{ index + 1 }}
             </option>
           </select>
-          
+
           <label>选择接收方 (B):</label>
           <select v-model="identityTest.receiverB" class="node-select">
             <option value="-1">请选择卫星</option>
@@ -284,7 +210,7 @@
               卫星 {{ index + 1 }}
             </option>
           </select>
-          
+
           <label>选择无权解密方 (C):</label>
           <select v-model="identityTest.unauthorizedC" class="node-select">
             <option value="-1">请选择卫星</option>
@@ -293,48 +219,27 @@
             </option>
           </select>
         </div>
-        
+
         <div class="message-input">
           <label>消息内容:</label>
-          <input 
-            v-model="identityTest.message" 
-            type="text" 
-            placeholder="输入要发送的消息"
-            class="message-field"
-          />
+          <input v-model="identityTest.message" type="text" placeholder="输入要发送的消息" class="message-field" />
         </div>
-        
+
         <div class="action-buttons">
-          <button 
-            @click="encryptForIdentity" 
-            :disabled="!canTestIdentity"
-            class="action-btn encrypt-btn"
-          >
+          <button @click="encryptForIdentity" :disabled="!canTestIdentity" class="action-btn encrypt-btn">
             🔒 加密
           </button>
-          <button 
-            @click="sendIdentityMessage" 
-            :disabled="!identityTest.ciphertext"
-            class="action-btn send-btn"
-          >
+          <button @click="sendIdentityMessage" :disabled="!identityTest.ciphertext" class="action-btn send-btn">
             📤 发送
           </button>
-          <button 
-            @click="decryptIdentityMessage" 
-            :disabled="!identityTest.sent"
-            class="action-btn decrypt-btn"
-          >
+          <button @click="decryptIdentityMessage" :disabled="!identityTest.sent" class="action-btn decrypt-btn">
             🔓 B解密
           </button>
-          <button 
-            @click="unauthorizedDecrypt" 
-            :disabled="!identityTest.sent"
-            class="action-btn unauthorized-btn"
-          >
+          <button @click="unauthorizedDecrypt" :disabled="!identityTest.sent" class="action-btn unauthorized-btn">
             🚫 C强行解密
           </button>
         </div>
-        
+
         <div class="result-display">
           <div v-if="identityTest.ciphertext" class="cipher-result">
             <label>密文:</label>
@@ -348,23 +253,7 @@
     </div>
 
     <!-- Query Modal -->
-    <QueryResultModal
-      :visible="queryModal.visible"
-      :satellite-index="queryModal.satelliteIndex"
-      v-model:query-text="queryModal.queryText"
-      v-model:block-start="queryModal.blockStart"
-      v-model:block-end="queryModal.blockEnd"
-      :total-blocks="totalBlocks"
-      :loading="queryModal.loading"
-      :results="queryModal.results"
-      :ciphertext="queryModal.ciphertext"
-      :query-time="queryModal.queryTime"
-      :decrypting="queryModal.decrypting"
-      :decryption-result="queryModal.decryptionResult"
-      @close="closeQueryModal"
-      @query="handleQuery"
-      @decrypt="handleDecryptAndVerify"
-    />
+    <QueryResultModal :visible="queryModal.visible" :satellite-index="queryModal.satelliteIndex" v-model:query-text="queryModal.queryText" v-model:block-start="queryModal.blockStart" v-model:block-end="queryModal.blockEnd" :total-blocks="totalBlocks" :loading="queryModal.loading" :results="queryModal.results" :ciphertext="queryModal.ciphertext" :query-time="queryModal.queryTime" :decrypting="queryModal.decrypting" :decryption-result="queryModal.decryptionResult" @close="closeQueryModal" @query="handleQuery" @decrypt="handleDecryptAndVerify" />
 
     <!-- Upload Loading Modal -->
     <div v-if="uploadLoading" class="modal-overlay">
@@ -382,38 +271,13 @@
     </div>
 
     <!-- File Upload Input (hidden) -->
-    <input
-      ref="fileInput"
-      type="file"
-      style="display: none"
-      @change="handleFileSelect"
-      accept=".csv"
-      multiple
-      webkitdirectory
-    />
+    <input ref="fileInput" type="file" style="display: none" @change="handleFileSelect" accept=".csv" multiple webkitdirectory />
 
     <!-- Repair Modal -->
-    <SatelliteRepairModal
-      :visible="repairModal.visible"
-      :satellite-index="repairModal.satelliteIndex"
-      :loss-rate="repairModal.lossRate"
-      :redundancy="repairModal.redundancy"
-      :repairing="repairModal.repairing"
-      :repair-result="repairModal.repairResult"
-      :repair-time="repairModal.repairTime"
-      :is-satellite-faulty="getSatelliteFaultStatus(repairModal.satelliteIndex)"
-      @close="closeRepairModal"
-      @repair="handleRepair"
-      @update:loss-rate="repairModal.lossRate = $event"
-      @update:redundancy="repairModal.redundancy = $event"
-    />
+    <SatelliteRepairModal :visible="repairModal.visible" :satellite-index="repairModal.satelliteIndex" :loss-rate="repairModal.lossRate" :redundancy="repairModal.redundancy" :repairing="repairModal.repairing" :repair-result="repairModal.repairResult" :repair-time="repairModal.repairTime" :is-satellite-faulty="getSatelliteFaultStatus(repairModal.satelliteIndex)" @close="closeRepairModal" @repair="handleRepair" @update:loss-rate="repairModal.lossRate = $event" @update:redundancy="repairModal.redundancy = $event" />
 
     <!-- Satellite Fault Component -->
-    <SatelliteFault
-      :satellites="satellites"
-      @satellite-fault-changed="handleSatelliteFaultChanged"
-      ref="satelliteFaultRef"
-    />
+    <SatelliteFault :satellites="satellites" @satellite-fault-changed="handleSatelliteFaultChanged" ref="satelliteFaultRef" />
 
   </div>
 </template>
@@ -423,6 +287,7 @@ import { ref, onMounted, onUnmounted, computed, defineProps, watch } from 'vue'
 import SatelliteFault from './SatelliteFault.vue'
 import QueryResultModal from './QueryResultModal.vue'
 import SatelliteRepairModal from './SatelliteRepairModal.vue'
+import BlockchainUploadVisualizer from './BlockchainUploadVisualizer.vue'
 import cryptoService from '@/utils/cryptoService'
 
 const props = defineProps({
@@ -436,6 +301,8 @@ const props = defineProps({
 const satelliteRefs = ref([])
 const fileInput = ref(null)
 const satelliteFaultRef = ref(null)
+const blockchainVisualizerRef = ref(null)
+const uploadedData = ref([]) // 存储上传的数据
 
 const earthCenter = { x: 600, y: 600 } // system-container中心
 const satelliteRadius = 325 // 卫星轨道半径，与红圈半径一致（650px/2）
@@ -482,6 +349,15 @@ watch(() => props.satelliteCount, () => {
   updateSatellitePositions();
 });
 
+// 检查卫星是否是恶意节点
+const isMaliciousSatellite = (index) => {
+  // 如果 blockchainVisualizerRef 存在且其 isMaliciousSatellite 方法存在
+  if (blockchainVisualizerRef.value && blockchainVisualizerRef.value.isMaliciousSatellite) {
+    return blockchainVisualizerRef.value.isMaliciousSatellite(index);
+  }
+  return false;
+};
+
 const satelliteLinePairs = computed(() => {
   const pairs = [];
   for (let i = 0; i < satellites.value.length; i++) {
@@ -505,20 +381,20 @@ const contextMenu = ref({
 
 // Query Modal State
 const queryModal = ref({
-    visible: false,
-    queryText: '',
-    loading: false,
-    results: [],
-    blockStart: null,
-    blockEnd: null,
-    satelliteIndex: -1,
-    ciphertext: '',
-    queryTime: 0,
-    decrypting: false,
-    decryptionResult: '',
-    verificationTime: 0,
-    originalBlockIds: null
-  })
+  visible: false,
+  queryText: '',
+  loading: false,
+  results: [],
+  blockStart: null,
+  blockEnd: null,
+  satelliteIndex: -1,
+  ciphertext: '',
+  queryTime: 0,
+  decrypting: false,
+  decryptionResult: '',
+  verificationTime: 0,
+  originalBlockIds: null
+})
 
 // Repair Notification State
 const repairNotification = ref({
@@ -581,23 +457,23 @@ const identityTest = ref({
 
 // Computed properties for validation
 const canEncrypt = computed(() => {
-  return encryptionTest.value.senderA !== -1 && 
-         encryptionTest.value.receiverB !== -1 && 
-         encryptionTest.value.message.trim() !== ''
+  return encryptionTest.value.senderA !== -1 &&
+    encryptionTest.value.receiverB !== -1 &&
+    encryptionTest.value.message.trim() !== ''
 })
 
 const canTestTampering = computed(() => {
-  return tamperingTest.value.senderA !== -1 && 
-         tamperingTest.value.receiverB !== -1 && 
-         tamperingTest.value.tampererC !== -1 && 
-         tamperingTest.value.message.trim() !== ''
+  return tamperingTest.value.senderA !== -1 &&
+    tamperingTest.value.receiverB !== -1 &&
+    tamperingTest.value.tampererC !== -1 &&
+    tamperingTest.value.message.trim() !== ''
 })
 
 const canTestIdentity = computed(() => {
-  return identityTest.value.senderA !== -1 && 
-         identityTest.value.receiverB !== -1 && 
-         identityTest.value.unauthorizedC !== -1 && 
-         identityTest.value.message.trim() !== ''
+  return identityTest.value.senderA !== -1 &&
+    identityTest.value.receiverB !== -1 &&
+    identityTest.value.unauthorizedC !== -1 &&
+    identityTest.value.message.trim() !== ''
 })
 
 // 计算总区块数（等于文件数量）
@@ -633,7 +509,7 @@ const decryptAESCipher = async (hexCipher) => {
     if (!hexCipher.startsWith('0x')) {
       throw new Error('Invalid hex format')
     }
-    
+
     const hex = hexCipher.slice(2)
     return await cryptoService.decryptHex(hex)
   } catch (error) {
@@ -662,7 +538,7 @@ const encryptMessage = async () => {
   const message = encryptionTest.value.message
   const senderName = `卫星${encryptionTest.value.senderA + 1}`
   const receiverName = `卫星${encryptionTest.value.receiverB + 1}`
-  
+
   // Simulate encryption with AES-256
   const cipher = await generateHexCipher(message + '_encrypted_' + Date.now())
   encryptionTest.value.ciphertext = cipher
@@ -782,7 +658,7 @@ const showContextMenu = (event, index) => {
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     isAnimationPaused = true;
-    
+
     // 确保卫星位置不再变化，通过重新计算一次位置并保持不变
     updateSatellitePositions();
   }
@@ -826,7 +702,7 @@ const showContextMenu = (event, index) => {
 
 const closeContextMenu = () => {
   contextMenu.value.visible = false
-  
+
   // 恢复卫星动画
   if (isAnimationPaused && !animationFrameId) {
     isAnimationPaused = false;
@@ -846,7 +722,7 @@ const handleMenuAction = (action) => {
         try {
           const satelliteIndex = contextMenu.value.satelliteIndex
           const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
-          
+
           if (isFaulty) {
             // 如果卫星故障，显示修复模态框
             showRepairModal(satelliteIndex)
@@ -871,6 +747,21 @@ const handleMenuAction = (action) => {
 
 
 
+// 处理上链完成事件
+const handleUploadComplete = () => {
+  // 计算上链耗时
+  if (window.uploadInfo) {
+    const uploadEndTime = performance.now();
+    const uploadDuration = ((uploadEndTime - window.uploadInfo.startTime) / 1000).toFixed(2);
+
+    // 显示成功提示
+    alert(`区块链数据上链成功！\n\n⛓️ 上链信息:\n- 上链时间: ${uploadDuration}秒\n- 区块高度: ${window.uploadInfo.csvFilesCount}\n- 交易大小: 24KB`);
+
+    // 清除上传信息
+    window.uploadInfo = null;
+  }
+}
+
 // File Upload Functions
 const handleUploadFile = () => {
   fileInput.value.click()
@@ -879,120 +770,136 @@ const handleUploadFile = () => {
 const handleFileSelect = (event) => {
   const files = Array.from(event.target.files);
   if (files.length === 0) return;
-  
+
   // 过滤出CSV文件
   const csvFiles = files.filter(file => file.name.toLowerCase().endsWith('.csv'));
-  
+
   if (csvFiles.length === 0) {
     alert('未找到CSV文件！请选择包含CSV文件的文件夹。');
     event.target.value = '';
     return;
   }
-  
+
   console.log(`找到 ${csvFiles.length} 个CSV文件`);
-  
-  // 显示loading状态
-  uploadLoading.value = true;
-  
+
+  // 不再显示loading状态
+  // uploadLoading.value = true;
+
   // 记录上传开始时间
   const uploadStartTime = performance.now();
-  
+
   // 重置索引和计数器
   invertedIndex.value = {};
   fileIdCounter.value = 1;
   fileIdToName.value = {};
-  
+
   let processedFiles = 0;
-  
+
+  // 准备上传数据数组
+  const dataToUpload = [];
+
   // 处理每个CSV文件
   csvFiles.forEach((file) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         const content = e.target.result;
         const fileNameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
         const currentFileId = fileIdCounter.value;
-        
+
         // 记录文件ID到文件名的映射
         fileIdToName.value[currentFileId] = fileNameWithoutExtension;
-        
+
         // 解析CSV内容
         const rows = content.split('\n').filter(row => row.trim());
         let fileKeywordCount = 0;
-        
-        rows.forEach((row) => {
+
+        // 为区块链可视化准备数据
+        rows.forEach((row, rowIndex) => {
           const columns = row.split(',').map(col => col.trim().replace(/^"|"$/g, ''));
-          
+
+          // 将每行数据添加到上传数据数组
+          if (columns.length > 0 && columns[0]) {
+            dataToUpload.push({
+              fileId: currentFileId,
+              fileName: fileNameWithoutExtension,
+              rowIndex: rowIndex,
+              data: columns.join(','),
+              timestamp: Date.now() + rowIndex * 100 // 为每行数据添加一个时间戳
+            });
+          }
+
           columns.forEach((keyword) => {
             if (keyword) {
               // 建立倒排索引：关键字 -> 文件ID列表
               if (!invertedIndex.value[keyword]) {
                 invertedIndex.value[keyword] = [];
               }
-              
+
               // 如果该关键字还没有包含当前文件ID，则添加
               if (!invertedIndex.value[keyword].includes(currentFileId)) {
                 invertedIndex.value[keyword].push(currentFileId);
               }
-              
+
               fileKeywordCount++;
             }
           });
         });
-        
+
         // 文件关键字计数已完成
         fileIdCounter.value++; // 文件ID自增
         processedFiles++;
-        
+
         console.log(`处理文件: ${file.name}, ID: ${currentFileId}, 关键字数: ${fileKeywordCount}`);
-        
+
         // 当所有文件处理完成时显示结果
         if (processedFiles === csvFiles.length) {
           // 将数组转换为逗号分隔的字符串
           Object.keys(invertedIndex.value).forEach(keyword => {
             invertedIndex.value[keyword] = invertedIndex.value[keyword].join(',');
           });
-          
+
           console.log('倒排索引已建立:', invertedIndex.value);
           console.log('文件ID映射:', fileIdToName.value);
-          
+
+          // 更新上传数据
+          uploadedData.value = dataToUpload;
+
           // 索引建立完成
-          
-          // 延迟2.5秒后显示成功提示并隐藏loading
-          setTimeout(() => {
-             uploadLoading.value = false;
-            // 计算上链耗时（从开始上传到解析完成的时间）
-            const uploadEndTime = performance.now();
-            const uploadDuration = ((uploadEndTime - uploadStartTime) / 1000).toFixed(2);
-            alert(`区块链数据上链成功！\n\n⛓️ 上链信息:\n- 上链时间: ${uploadDuration}秒\n- 区块高度: ${csvFiles.length}\n- 交易大小: 24KB`);
-          }, 2500);
+
+          // 不再在这里显示成功提示，而是等待上链完成事件
+          // 保存上传信息，供上链完成后使用
+          window.uploadInfo = {
+            startTime: uploadStartTime,
+            csvFilesCount: csvFiles.length
+          };
         }
-        
+
       } catch (error) {
         console.error(`CSV解析错误 (${file.name}):`, error);
         processedFiles++;
-        
+
         if (processedFiles === csvFiles.length) {
           uploadLoading.value = false;
           alert('部分文件解析失败，请检查文件格式！');
         }
       }
     };
-    
+
     reader.onerror = () => {
       console.error(`文件读取失败: ${file.name}`);
       processedFiles++;
-      
+
       if (processedFiles === csvFiles.length) {
         uploadLoading.value = false;
         alert('部分文件读取失败！');
       }
     };
-    
+
     reader.readAsText(file, 'UTF-8');
   });
-  
+
   // 清空文件输入
   event.target.value = '';
 }
@@ -1000,7 +907,7 @@ const handleFileSelect = (event) => {
 // Query Modal Functions
 const showQueryModal = (satelliteIndex = -1) => {
   console.log('showQueryModal called for satellite', satelliteIndex);
-  
+
   // 检查卫星是否故障，如果故障则显示弹窗提示
   if (satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
     try {
@@ -1019,7 +926,7 @@ const showQueryModal = (satelliteIndex = -1) => {
       return
     }
   }
-  
+
   // 如果卫星正常，直接打开查询模态框
   queryModal.value.visible = true
   queryModal.value.queryText = ''
@@ -1054,35 +961,35 @@ const handleQuery = () => {
   queryModal.value.results = []
   queryModal.value.ciphertext = ''
   queryModal.value.decryptionResult = ''
-  
+
   // 记录查询开始时间
   const startTime = performance.now();
 
   // 模拟查询过程
   setTimeout(async () => {
     queryModal.value.loading = false
-    
+
     // 计算查询耗时
     const endTime = performance.now();
     const queryDuration = ((endTime - startTime) / 1000).toFixed(3);
     queryModal.value.queryTime = parseFloat(queryDuration);
-    
+
     const queryInput = queryModal.value.queryText.trim();
-    
+
     // 检查是否为多关键字查询（包含逗号）
     if (queryInput.includes(',')) {
       // 多关键字查询
       const keywords = queryInput.split(',').map(k => k.trim()).filter(k => k);
-      
+
       if (keywords.length === 0) {
         alert('请输入有效的查询关键字');
         return;
       }
-      
+
       // 对每个关键字查询文件ID，然后取交集
       const keywordResults = [];
       const missingKeywords = [];
-      
+
       keywords.forEach(keyword => {
         if (invertedIndex.value[keyword]) {
           const fileIds = invertedIndex.value[keyword].split(',').map(id => parseInt(id));
@@ -1091,110 +998,110 @@ const handleQuery = () => {
           missingKeywords.push(keyword);
         }
       });
-      
+
       if (keywordResults.length === 0) {
         queryModal.value.results = [
-           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
-           '❌ 所有关键字都未找到匹配',
-           '',
-           '💡 建议:',
-           '1. 检查关键字拼写',
-           '2. 尝试使用文件中的确切关键字',
-           '3. 确保已上传CSV文件夹并建立索引',
-           '',
-           `⏱️ 查询耗时: ${queryDuration} 秒`
-         ];
+          `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+          '❌ 所有关键字都未找到匹配',
+          '',
+          '💡 建议:',
+          '1. 检查关键字拼写',
+          '2. 尝试使用文件中的确切关键字',
+          '3. 确保已上传CSV文件夹并建立索引',
+          '',
+          `⏱️ 查询耗时: ${queryDuration} 秒`
+        ];
         return;
       }
-      
+
       // 计算交集：找到同时包含所有找到关键字的文件ID
       let intersectionIds = keywordResults[0].fileIds;
       for (let i = 1; i < keywordResults.length; i++) {
         intersectionIds = intersectionIds.filter(id => keywordResults[i].fileIds.includes(id));
       }
-      
+
       if (intersectionIds.length > 0) {
         // 根据区块区间过滤文件ID
-        const filteredIds = intersectionIds.filter(id => 
+        const filteredIds = intersectionIds.filter(id =>
           id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
         );
 
-        
+
         // 生成区块ID集的密文
         const blockIdString = filteredIds.join(',');
         queryModal.value.ciphertext = await generateHexCipher(blockIdString);
         // 存储原始数据用于解密显示
         queryModal.value.originalBlockIds = filteredIds;
-        
+
         queryModal.value.results = [
-           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
-           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
-           '',
-           '✅ 查询完成，数据已加密存储'
-         ];
+          `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+          `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
+          '',
+          '✅ 查询完成，数据已加密存储'
+        ];
       } else {
         queryModal.value.results = [
-           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
-           '❌ 没有文件同时包含所有关键字',
-           '',
-           '🔍 各关键字查询结果:',
-           ...keywordResults.map(result => `   "${result.keyword}" -> 找到 ${result.fileIds.length} 个匹配区块`),
-           ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
-           '',
-           '💡 建议: 尝试减少关键字数量或使用更通用的关键字',
-           '',
-           `⏱️ 查询耗时: ${queryDuration} 秒`
-         ];
+          `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
+          '❌ 没有文件同时包含所有关键字',
+          '',
+          '🔍 各关键字查询结果:',
+          ...keywordResults.map(result => `   "${result.keyword}" -> 找到 ${result.fileIds.length} 个匹配区块`),
+          ...(missingKeywords.length > 0 ? [`   未找到: [${missingKeywords.map(k => `"${k}"`).join(', ')}]`] : []),
+          '',
+          '💡 建议: 尝试减少关键字数量或使用更通用的关键字',
+          '',
+          `⏱️ 查询耗时: ${queryDuration} 秒`
+        ];
       }
     } else {
       // 单关键字查询（原有逻辑）
       const queryKeyword = queryInput;
-      
+
       if (invertedIndex.value[queryKeyword]) {
         const allFileIds = invertedIndex.value[queryKeyword].split(',').map(id => parseInt(id));
         // 根据区块区间过滤文件ID
-        const filteredIds = allFileIds.filter(id => 
+        const filteredIds = allFileIds.filter(id =>
           id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
         );
 
-        
+
         // 生成区块ID集的密文
         const blockIdString = filteredIds.join(',');
         queryModal.value.ciphertext = await generateHexCipher(blockIdString);
         // 存储原始数据用于解密显示
         queryModal.value.originalBlockIds = filteredIds;
-        
+
         queryModal.value.results = [
-           `查询关键字: "${queryKeyword}"`,
-           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
-           '',
-           '✅ 查询完成，数据已加密存储'
-         ];
+          `查询关键字: "${queryKeyword}"`,
+          `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
+          '',
+          '✅ 查询完成，数据已加密存储'
+        ];
       } else {
         // 查找相似的时间格式关键字（用于调试）
-        const timeRelatedKeys = Object.keys(invertedIndex.value).filter(key => 
+        const timeRelatedKeys = Object.keys(invertedIndex.value).filter(key =>
           key.includes('2012/10/7') || key.includes('8:00:00')
         ).slice(0, 10);
-        
+
         queryModal.value.results = [
-           `查询关键字: "${queryKeyword}"`,
-           '❌ 未找到匹配的关键字',
-           '',
-           '🔍 调试信息 - 索引中相关的时间关键字:',
-           ...timeRelatedKeys.map(key => `   "${key}"`),
-           '',
-           '💡 建议:',
-           '1. 检查关键字拼写',
-           '2. 尝试使用文件中的确切关键字',
-           '3. 确保已上传CSV文件夹并建立索引',
-           '4. 使用逗号分隔多个关键字进行组合查询',
-           '',
-           `📊 当前索引状态:`,
-           `- 已索引文件数: ${Object.keys(fileIdToName.value).length}`,
-           `- 唯一关键字数: ${Object.keys(invertedIndex.value).length}`,
-           '',
-           `⏱️ 查询耗时: ${queryDuration} 秒`
-         ];
+          `查询关键字: "${queryKeyword}"`,
+          '❌ 未找到匹配的关键字',
+          '',
+          '🔍 调试信息 - 索引中相关的时间关键字:',
+          ...timeRelatedKeys.map(key => `   "${key}"`),
+          '',
+          '💡 建议:',
+          '1. 检查关键字拼写',
+          '2. 尝试使用文件中的确切关键字',
+          '3. 确保已上传CSV文件夹并建立索引',
+          '4. 使用逗号分隔多个关键字进行组合查询',
+          '',
+          `📊 当前索引状态:`,
+          `- 已索引文件数: ${Object.keys(fileIdToName.value).length}`,
+          `- 唯一关键字数: ${Object.keys(invertedIndex.value).length}`,
+          '',
+          `⏱️ 查询耗时: ${queryDuration} 秒`
+        ];
       }
     }
   }, 800)
@@ -1209,31 +1116,31 @@ const handleDecryptAndVerify = async () => {
 
   queryModal.value.decrypting = true
   queryModal.value.decryptionResult = ''
-  
+
   // 记录验证开始时间
   const startTime = performance.now()
-  
+
   // 模拟解密验证过程
   setTimeout(async () => {
     // 计算验证耗时
     const endTime = performance.now()
     const verificationDuration = ((endTime - startTime) / 1000).toFixed(3)
     queryModal.value.verificationTime = parseFloat(verificationDuration)
-    
+
     // 使用解密过程
     try {
       const originalData = await decryptHexCipher(queryModal.value.ciphertext)
-      
+
       // 格式化显示区块ID列表
-      const blockIdDisplay = queryModal.value.originalBlockIds ? 
-        `\n🔢 区块ID: [${queryModal.value.originalBlockIds.join(', ')}]` : 
+      const blockIdDisplay = queryModal.value.originalBlockIds ?
+        `\n🔢 区块ID: [${queryModal.value.originalBlockIds.join(', ')}]` :
         `\n🔓 解密结果: ${originalData}`
-      
+
       queryModal.value.decryptionResult = `✅ 解密验证成功${blockIdDisplay}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔐 密文完整性: 验证通过\n🛡️ 数字签名: 有效`
     } catch (error) {
       queryModal.value.decryptionResult = `❌ 解密验证失败\n\n错误信息: ${error.message}\n⏱️ 验证耗时: ${verificationDuration} 秒`
     }
-    
+
     queryModal.value.decrypting = false
   }, 1200) // 模拟验证过程需要1.2秒
 }
@@ -1280,7 +1187,7 @@ const showRepairModal = (satelliteIndex) => {
   repairModal.value.repairing = false
   repairModal.value.repairResult = ''
   repairModal.value.repairTime = 0
-  
+
   // 关闭上下文菜单，但不恢复动画，因为修复模态框仍然打开
   contextMenu.value.visible = false
 }
@@ -1288,7 +1195,7 @@ const showRepairModal = (satelliteIndex) => {
 // 关闭修复模态框
 const closeRepairModal = () => {
   repairModal.value.visible = false
-  
+
   // 恢复卫星动画
   if (isAnimationPaused && !animationFrameId) {
     isAnimationPaused = false;
@@ -1301,40 +1208,40 @@ const handleRepair = async () => {
   const satelliteIndex = repairModal.value.satelliteIndex
   const lossRate = repairModal.value.lossRate
   const redundancy = repairModal.value.redundancy
-  
+
   repairModal.value.repairing = true
-  
+
   // 基于表格数据的精确映射
   const calculateRepairTime = (lossRate, redundancy) => {
     // 精确的数据映射表（基于用户提供的表格数据）
-     const repairTimeTable = {
-       '0.01_0.2': 1.577,
-       '0.05_0.2': 0.73,
-       '0.1_0.2': 1.098,
-       '0.15_0.2': 0.863,
-       '0.05_0.25': 0.834,
-       '0.05_0.3': 0.934,
-       '0.05_0.35': 0.889
-     }
-    
+    const repairTimeTable = {
+      '0.01_0.2': 1.577,
+      '0.05_0.2': 0.73,
+      '0.1_0.2': 1.098,
+      '0.15_0.2': 0.863,
+      '0.05_0.25': 0.834,
+      '0.05_0.3': 0.934,
+      '0.05_0.35': 0.889
+    }
+
     // 创建查找键
     const key = `${lossRate}_${redundancy}`
-    
+
     // 如果有精确匹配，直接返回
     if (repairTimeTable[key]) {
       return repairTimeTable[key] * 1000 // 转换为毫秒
     }
-    
+
     // 如果没有精确匹配，使用插值计算
     // 找到最接近的数据点进行线性插值
     const entries = Object.entries(repairTimeTable)
     let closestEntry = null
     let minDistance = Infinity
-    
+
     entries.forEach(([tableKey, time]) => {
       const [tableLoss, tableRedundancy] = tableKey.split('_').map(Number)
       const distance = Math.sqrt(
-        Math.pow(lossRate - tableLoss, 2) + 
+        Math.pow(lossRate - tableLoss, 2) +
         Math.pow(redundancy - tableRedundancy, 2)
       )
       if (distance < minDistance) {
@@ -1342,33 +1249,33 @@ const handleRepair = async () => {
         closestEntry = { lossRate: tableLoss, redundancy: tableRedundancy, time }
       }
     })
-    
+
     // 如果找到最接近的点，返回其时间值
     if (closestEntry) {
       return closestEntry.time * 1000 // 转换为毫秒
     }
-    
+
     // 备用计算（如果没有找到合适的数据点）
     let repairTime = 1.0 + (lossRate * 2) - (redundancy * 1.5)
     repairTime = Math.max(0.7, Math.min(1.6, repairTime))
     return repairTime * 1000
   }
-  
+
   const repairDuration = calculateRepairTime(lossRate, redundancy)
-  
+
   // 使用计算出的精确修复时间（秒）
   const theoreticalRepairTime = (repairDuration / 1000).toFixed(3)
-  
+
   setTimeout(() => {
     // 执行实际的卫星修复
     if (satelliteFaultRef.value?.repairSatellite) {
       satelliteFaultRef.value.repairSatellite(satelliteIndex)
     }
-    
+
     repairModal.value.repairTime = parseFloat(theoreticalRepairTime)
     repairModal.value.repairResult = `✅ 卫星 ${satelliteIndex + 1} 修复完成！\n\n📊 修复参数:\n- 损失率: ${lossRate}\n- 冗余度: ${redundancy}\n\n⏱️ 修复耗时: ${theoreticalRepairTime} 秒\n🛠️ 修复状态: 成功\n🔧 系统状态: 正常运行`
     repairModal.value.repairing = false
-    
+
     // 3秒后自动关闭修复模态框并恢复动画
     setTimeout(() => {
       closeRepairModal()
@@ -1380,11 +1287,11 @@ const handleRepair = async () => {
 
 
 onMounted(() => {
-  
-  })
+
+})
 
 onUnmounted(() => {
-  
+
 })
 </script>
 
@@ -1394,7 +1301,8 @@ onUnmounted(() => {
 }
 
 @keyframes commBlink {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -1431,17 +1339,20 @@ onUnmounted(() => {
 }
 
 .stars:before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-image:
-    radial-gradient(2px 2px at 20px 30px, #eee, transparent),
-    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
+  background-image: radial-gradient(2px 2px at 20px 30px, #eee, transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.8), transparent),
     radial-gradient(1px 1px at 90px 40px, #fff, transparent),
-    radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.6), transparent),
+    radial-gradient(
+      1px 1px at 130px 80px,
+      rgba(255, 255, 255, 0.6),
+      transparent
+    ),
     radial-gradient(2px 2px at 160px 30px, #ddd, transparent);
   background-repeat: repeat;
   background-size: 200px 100px;
@@ -1458,17 +1369,28 @@ onUnmounted(() => {
 }
 
 .stars2:before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-image:
-    radial-gradient(1px 1px at 25px 25px, rgba(255,255,255,0.5), transparent),
-    radial-gradient(1px 1px at 50px 75px, rgba(255,255,255,0.7), transparent),
-    radial-gradient(1px 1px at 125px 45px, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 175px 85px, rgba(255,255,255,0.6), transparent);
+  background-image: radial-gradient(
+      1px 1px at 25px 25px,
+      rgba(255, 255, 255, 0.5),
+      transparent
+    ),
+    radial-gradient(1px 1px at 50px 75px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(
+      1px 1px at 125px 45px,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    ),
+    radial-gradient(
+      1px 1px at 175px 85px,
+      rgba(255, 255, 255, 0.6),
+      transparent
+    );
   background-repeat: repeat;
   background-size: 300px 150px;
 }
@@ -1484,31 +1406,54 @@ onUnmounted(() => {
 }
 
 .stars3:before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-image:
-    radial-gradient(1px 1px at 10px 10px, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1px 1px at 150px 150px, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1px 1px at 60px 170px, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1px 1px at 175px 30px, rgba(255,255,255,0.3), transparent),
-    radial-gradient(2px 2px at 195px 195px, rgba(255,255,255,0.4), transparent);
+  background-image: radial-gradient(
+      1px 1px at 10px 10px,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    ),
+    radial-gradient(
+      1px 1px at 150px 150px,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    ),
+    radial-gradient(
+      1px 1px at 60px 170px,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    ),
+    radial-gradient(
+      1px 1px at 175px 30px,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    ),
+    radial-gradient(
+      2px 2px at 195px 195px,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
   background-repeat: repeat;
   background-size: 400px 200px;
 }
 
 @keyframes animateStars {
-  from { transform: translateY(0px); }
-  to { transform: translateY(-2000px); }
+  from {
+    transform: translateY(0px);
+  }
+  to {
+    transform: translateY(-2000px);
+  }
 }
 
 .system-container {
   position: absolute;
   top: 50%;
-  left: 50%;
+  left: 60%;
   transform: translate(-50%, -50%);
   width: 1200px;
   height: 1200px;
@@ -1553,19 +1498,29 @@ onUnmounted(() => {
   height: 100%;
   border-radius: 50%;
   position: relative;
-  background:
-    radial-gradient(circle at 25% 25%, #87ceeb 0%, #4682b4 30%, #1e40af 60%, #0f172a 100%),
-    conic-gradient(from 0deg at 50% 50%,
-      #1e40af 0deg, #2563eb 60deg, #3b82f6 120deg,
-      #1e40af 180deg, #1e3a8a 240deg, #2563eb 300deg, #1e40af 360deg);
+  background: radial-gradient(
+      circle at 25% 25%,
+      #87ceeb 0%,
+      #4682b4 30%,
+      #1e40af 60%,
+      #0f172a 100%
+    ),
+    conic-gradient(
+      from 0deg at 50% 50%,
+      #1e40af 0deg,
+      #2563eb 60deg,
+      #3b82f6 120deg,
+      #1e40af 180deg,
+      #1e3a8a 240deg,
+      #2563eb 300deg,
+      #1e40af 360deg
+    );
   background-blend-mode: multiply;
   animation: rotate 30s linear infinite;
-  box-shadow:
-    inset -40px -40px 80px rgba(0,0,0,0.6),
-    inset 20px 20px 40px rgba(135,206,235,0.2),
-    0 0 60px rgba(30,144,255,0.8),
-    0 0 120px rgba(59,130,246,0.4),
-    0 0 200px rgba(30,144,255,0.2);
+  box-shadow: inset -40px -40px 80px rgba(0, 0, 0, 0.6),
+    inset 20px 20px 40px rgba(135, 206, 235, 0.2),
+    0 0 60px rgba(30, 144, 255, 0.8), 0 0 120px rgba(59, 130, 246, 0.4),
+    0 0 200px rgba(30, 144, 255, 0.2);
   filter: brightness(1.1) contrast(1.2);
 }
 
@@ -1574,13 +1529,43 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background:
-    radial-gradient(ellipse 45px 35px at 25% 35%, #2d5016 0%, #3d6b1f 40%, transparent 70%),
-    radial-gradient(ellipse 40px 30px at 70% 25%, #2d5016 0%, #4a7c2a 50%, transparent 80%),
-    radial-gradient(ellipse 50px 40px at 60% 70%, #1f3d0c 0%, #2d5016 30%, #4a7c2a 60%, transparent 85%),
-    radial-gradient(ellipse 35px 45px at 20% 75%, #2d5016 0%, #3d6b1f 45%, transparent 75%),
-    radial-gradient(ellipse 30px 25px at 80% 60%, #1f3d0c 0%, #2d5016 40%, transparent 70%),
-    radial-gradient(ellipse 25px 20px at 15% 50%, #2d5016 0%, #4a7c2a 50%, transparent 80%);
+  background: radial-gradient(
+      ellipse 45px 35px at 25% 35%,
+      #2d5016 0%,
+      #3d6b1f 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 40px 30px at 70% 25%,
+      #2d5016 0%,
+      #4a7c2a 50%,
+      transparent 80%
+    ),
+    radial-gradient(
+      ellipse 50px 40px at 60% 70%,
+      #1f3d0c 0%,
+      #2d5016 30%,
+      #4a7c2a 60%,
+      transparent 85%
+    ),
+    radial-gradient(
+      ellipse 35px 45px at 20% 75%,
+      #2d5016 0%,
+      #3d6b1f 45%,
+      transparent 75%
+    ),
+    radial-gradient(
+      ellipse 30px 25px at 80% 60%,
+      #1f3d0c 0%,
+      #2d5016 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 25px 20px at 15% 50%,
+      #2d5016 0%,
+      #4a7c2a 50%,
+      transparent 80%
+    );
   opacity: 0.9;
   mix-blend-mode: overlay;
 }
@@ -1592,7 +1577,12 @@ onUnmounted(() => {
   width: calc(100% + 10px);
   height: calc(100% + 10px);
   border-radius: 50%;
-  background: radial-gradient(circle, transparent 85%, rgba(135,206,235,0.3) 90%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    transparent 85%,
+    rgba(135, 206, 235, 0.3) 90%,
+    transparent 100%
+  );
 }
 
 .earth-clouds {
@@ -1602,17 +1592,36 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background:
-    radial-gradient(ellipse 30px 15px at 30% 20%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(ellipse 25px 12px at 70% 40%, rgba(255,255,255,0.3), transparent),
-    radial-gradient(ellipse 35px 18px at 45% 65%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(ellipse 20px 10px at 80% 80%, rgba(255,255,255,0.3), transparent);
+  background: radial-gradient(
+      ellipse 30px 15px at 30% 20%,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 25px 12px at 70% 40%,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 35px 18px at 45% 65%,
+      rgba(255, 255, 255, 0.35),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 20px 10px at 80% 80%,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
   animation: rotate 45s linear infinite reverse;
 }
 
 @keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Communication Lines */
@@ -1623,14 +1632,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  }
+}
 
 .comm-line {
   position: absolute;
 }
 
 @keyframes commBlink {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -1683,17 +1693,26 @@ onUnmounted(() => {
 .solar-panel {
   width: 18px;
   height: 32px;
-  background:
-    linear-gradient(135deg, #1e3a8a 0%, #1e40af 25%, #3b82f6 50%, #60a5fa 75%, #93c5fd 100%),
-    linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+  background: linear-gradient(
+      135deg,
+      #1e3a8a 0%,
+      #1e40af 25%,
+      #3b82f6 50%,
+      #60a5fa 75%,
+      #93c5fd 100%
+    ),
+    linear-gradient(
+      45deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 70%
+    );
   border: 1px solid #0f172a;
   position: relative;
   border-radius: 3px;
-  box-shadow:
-    inset 0 2px 4px rgba(255,255,255,0.3),
-    inset 0 -2px 4px rgba(0,0,0,0.2),
-    0 4px 8px rgba(0,0,0,0.4),
-    0 0 10px rgba(59,130,246,0.3);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.4),
+    0 0 10px rgba(59, 130, 246, 0.3);
   transform: perspective(100px) rotateX(5deg);
 }
 
@@ -1703,39 +1722,56 @@ onUnmounted(() => {
   left: 2px;
   right: 2px;
   bottom: 2px;
-  background:
-    repeating-linear-gradient(
+  background: repeating-linear-gradient(
       0deg,
-      rgba(255,255,255,0.2) 0px,
-      rgba(255,255,255,0.2) 2px,
-      rgba(255,255,255,0.05) 2px,
-      rgba(255,255,255,0.05) 4px,
-      rgba(255,255,255,0.15) 4px,
-      rgba(255,255,255,0.15) 6px
+      rgba(255, 255, 255, 0.2) 0px,
+      rgba(255, 255, 255, 0.2) 2px,
+      rgba(255, 255, 255, 0.05) 2px,
+      rgba(255, 255, 255, 0.05) 4px,
+      rgba(255, 255, 255, 0.15) 4px,
+      rgba(255, 255, 255, 0.15) 6px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(255,255,255,0.15) 0px,
-      rgba(255,255,255,0.15) 1px,
+      rgba(255, 255, 255, 0.15) 0px,
+      rgba(255, 255, 255, 0.15) 1px,
       transparent 1px,
       transparent 3px
     ),
-    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 70%);
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 70%
+    );
   border-radius: 2px;
   animation: solarGlow 3s ease-in-out infinite alternate;
 }
 
 @keyframes solarGlow {
-  0% { filter: brightness(1) saturate(1); }
-  100% { filter: brightness(1.1) saturate(1.2); }
+  0% {
+    filter: brightness(1) saturate(1);
+  }
+  100% {
+    filter: brightness(1.1) saturate(1.2);
+  }
 }
 
 .satellite-core {
   width: 24px;
   height: 24px;
-  background:
-    linear-gradient(135deg, #1f2937 0%, #374151 25%, #4b5563 50%, #6b7280 75%, #9ca3af 100%),
-    radial-gradient(circle at 30% 30%, rgba(251,191,36,0.3) 0%, transparent 70%);
+  background: linear-gradient(
+      135deg,
+      #1f2937 0%,
+      #374151 25%,
+      #4b5563 50%,
+      #6b7280 75%,
+      #9ca3af 100%
+    ),
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(251, 191, 36, 0.3) 0%,
+      transparent 70%
+    );
   border: 2px solid #f59e0b;
   border-radius: 4px;
   position: relative;
@@ -1743,57 +1779,53 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    inset 0 2px 4px rgba(255,255,255,0.2),
-    inset 0 -2px 4px rgba(0,0,0,0.3),
-    0 0 15px rgba(245,158,11,0.5),
-    0 4px 8px rgba(0,0,0,0.5),
-    0 0 25px rgba(251,191,36,0.3);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3), 0 0 15px rgba(245, 158, 11, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.5), 0 0 25px rgba(251, 191, 36, 0.3);
   transform: perspective(50px) rotateX(10deg);
 }
 
 .core-light {
   width: 8px;
   height: 8px;
-  background:
-    radial-gradient(circle at 30% 30%, #34d399 0%, #10b981 50%, #047857 100%);
+  background: radial-gradient(
+    circle at 30% 30%,
+    #34d399 0%,
+    #10b981 50%,
+    #047857 100%
+  );
   border-radius: 50%;
   animation: corePulse 2s ease-in-out infinite;
-  box-shadow:
-    0 0 15px #10b981,
-    0 0 25px rgba(16,185,129,0.6),
-    inset 0 1px 2px rgba(255,255,255,0.3);
+  box-shadow: 0 0 15px #10b981, 0 0 25px rgba(16, 185, 129, 0.6),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
   position: relative;
 }
 
 .core-light::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 1px;
   left: 1px;
   width: 3px;
   height: 3px;
-  background: rgba(255,255,255,0.8);
+  background: rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   animation: corePulse 2s ease-in-out infinite reverse;
 }
 
 @keyframes corePulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
-    box-shadow:
-      0 0 15px #10b981,
-      0 0 25px rgba(16,185,129,0.6),
-      inset 0 1px 2px rgba(255,255,255,0.3);
+    box-shadow: 0 0 15px #10b981, 0 0 25px rgba(16, 185, 129, 0.6),
+      inset 0 1px 2px rgba(255, 255, 255, 0.3);
   }
   50% {
     opacity: 0.7;
     transform: scale(1.2);
-    box-shadow:
-      0 0 25px #10b981,
-      0 0 40px rgba(16,185,129,0.8),
-      inset 0 1px 2px rgba(255,255,255,0.5);
+    box-shadow: 0 0 25px #10b981, 0 0 40px rgba(16, 185, 129, 0.8),
+      inset 0 1px 2px rgba(255, 255, 255, 0.5);
   }
 }
 
@@ -1820,7 +1852,7 @@ onUnmounted(() => {
 }
 
 .satellite-antenna::before {
-  content: '';
+  content: "";
   position: absolute;
   top: -3px;
   left: -2px;
@@ -1874,10 +1906,8 @@ onUnmounted(() => {
   background: rgba(15, 23, 42, 0.98);
   border: 1px solid #475569;
   border-radius: 16px;
-  box-shadow:
-    0 25px 50px rgba(0,0,0,0.7),
-    0 0 30px rgba(59, 130, 246, 0.3),
-    inset 0 1px 0 rgba(255,255,255,0.15);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(59, 130, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
   z-index: 9999;
   min-width: 150px;
   backdrop-filter: blur(20px);
@@ -1948,13 +1978,18 @@ onUnmounted(() => {
   width: 100%;
   padding: 8px 12px;
   color: #f1f5f9;
-  background: linear-gradient(135deg, rgba(51, 65, 85, 0.8), rgba(71, 85, 105, 0.6));
+  background: linear-gradient(
+    135deg,
+    rgba(51, 65, 85, 0.8),
+    rgba(71, 85, 105, 0.6)
+  );
   border: 1px solid rgba(148, 163, 184, 0.3);
   text-align: left;
   font-weight: 600;
   border-radius: 12px;
   margin: 4px 0;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   letter-spacing: 0.5px;
   cursor: pointer;
   user-select: none;
@@ -1962,38 +1997,56 @@ onUnmounted(() => {
 }
 
 .menu-item:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(99, 102, 241, 0.8));
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.9),
+    rgba(99, 102, 241, 0.8)
+  );
   color: #ffffff;
   transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   border-color: rgba(96, 165, 250, 0.8);
 }
 
 .menu-item:active {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 1), rgba(99, 102, 241, 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 1),
+    rgba(99, 102, 241, 0.9)
+  );
   transform: translateY(0) scale(0.98);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .menu-item:disabled {
-  background: linear-gradient(135deg, rgba(71, 85, 105, 0.4), rgba(100, 116, 139, 0.3));
+  background: linear-gradient(
+    135deg,
+    rgba(71, 85, 105, 0.4),
+    rgba(100, 116, 139, 0.3)
+  );
   color: #64748b;
   cursor: not-allowed;
   opacity: 0.6;
   transform: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   border-color: rgba(148, 163, 184, 0.2);
 }
 
 .menu-item:disabled:hover {
-  background: linear-gradient(135deg, rgba(71, 85, 105, 0.4), rgba(100, 116, 139, 0.3));
+  background: linear-gradient(
+    135deg,
+    rgba(71, 85, 105, 0.4),
+    rgba(100, 116, 139, 0.3)
+  );
   color: #64748b;
   transform: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   border-color: rgba(148, 163, 184, 0.2);
 }
-
-
 
 .overlay {
   position: fixed;
@@ -2026,7 +2079,7 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2061,7 +2114,7 @@ onUnmounted(() => {
   border-radius: 12px;
   padding: 20px;
   color: white;
-  font-family: 'Arial', sans-serif;
+  font-family: "Arial", sans-serif;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   overflow-y: auto;
@@ -2250,7 +2303,7 @@ onUnmounted(() => {
   background: rgba(30, 41, 59, 0.6);
   border: 1px solid #475569;
   border-radius: 6px;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 12px;
   color: #fbbf24;
   word-break: break-all;
@@ -2296,7 +2349,7 @@ onUnmounted(() => {
   max-width: 600px;
   max-height: 80vh;
   overflow: hidden;
-  box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(20px);
   animation: modalFadeIn 0.3s ease-out;
 }
@@ -2312,8 +2365,6 @@ onUnmounted(() => {
   }
 }
 
-
-
 /* Upload Loading Modal */
 .upload-loading-modal {
   background: rgba(31, 41, 55, 0.95);
@@ -2322,7 +2373,7 @@ onUnmounted(() => {
   max-width: 400px;
   width: 90%;
   color: white;
-  font-family: 'Arial', sans-serif;
+  font-family: "Arial", sans-serif;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   text-align: center;
@@ -2345,11 +2396,13 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
-
-
 
 .loading-content p {
   margin: 0;
@@ -2400,8 +2453,12 @@ onUnmounted(() => {
 }
 
 @keyframes iconRotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .notification-text {
@@ -2426,6 +2483,4 @@ onUnmounted(() => {
   border-radius: 3px;
   transition: width 0.1s ease-out;
 }
-
-
 </style>
