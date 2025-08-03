@@ -8,7 +8,7 @@
     </div>
 
     <!-- Blockchain Upload Visualizer -->
-    <BlockchainUploadVisualizer ref="blockchainVisualizerRef" :satellite-count="props.satelliteCount" :uploaded-data="uploadedData" @upload-complete="handleUploadComplete" />
+    <BlockchainUploadVisualizer ref="blockchainVisualizerRef" :satellite-count="props.satelliteCount" :uploaded-data="uploadedData" @upload-complete="handleUploadComplete" @malicious-satellites-initialized="syncMaliciousSatellitesToFaults" />
 
     <!-- Main container -->
     <div class="system-container">
@@ -25,7 +25,7 @@
 
       <!-- Satellites -->
       <div v-for="(satellite, index) in satellites" :key="index" :ref="el => satelliteRefs[index] = el" class="satellite" :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }" @click="!contextMenu.visible && showContextMenu($event, index)">
-        <img :src="isMaliciousSatellite(index + 1) ? require('../assets/satellite_error.jpg') : (satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg'))" alt="卫星" class="satellite-img" style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;" />
+        <img :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')" alt="卫星" class="satellite-img" style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;" />
         <!-- Satellite Number Label -->
         <div class="satellite-number">
           {{ index + 1 }}
@@ -337,6 +337,11 @@ const animateSatellites = () => {
 onMounted(() => {
   updateSatellitePositions(); // 初始化卫星位置
   animateSatellites(); // 开始动画
+  
+  // 等待组件完全挂载后，同步恶意卫星状态到故障状态
+  setTimeout(() => {
+    syncMaliciousSatellitesToFaults();
+  }, 500);
 });
 
 onUnmounted(() => {
@@ -349,11 +354,13 @@ watch(() => props.satelliteCount, () => {
   updateSatellitePositions();
 });
 
+/* eslint-disable no-unused-vars */
 // 检查卫星是否是恶意节点
 const isMaliciousSatellite = (index) => {
   // 如果 blockchainVisualizerRef 存在且其 isMaliciousSatellite 方法存在
   if (blockchainVisualizerRef.value && blockchainVisualizerRef.value.isMaliciousSatellite) {
-    return blockchainVisualizerRef.value.isMaliciousSatellite(index);
+    // 注意：BlockchainUploadVisualizer组件使用1-based索引，所以这里需要+1
+    return blockchainVisualizerRef.value.isMaliciousSatellite(index + 1);
   }
   return false;
 };
@@ -1151,6 +1158,35 @@ const handleSatelliteFaultChanged = (faultData) => {
   // 这里可以添加额外的逻辑，比如更新UI状态等
 }
 
+// 同步恶意卫星状态到故障状态
+const syncMaliciousSatellitesToFaults = (maliciousList) => {
+  if (!satelliteFaultRef.value) {
+    console.warn('无法同步恶意卫星状态：SatelliteFault组件引用不存在');
+    return;
+  }
+  
+  // 如果没有提供恶意卫星列表，尝试从BlockchainUploadVisualizer组件获取
+  let maliciousSatellites = maliciousList || [];
+  if (maliciousSatellites.length === 0 && blockchainVisualizerRef.value) {
+    // 遍历所有卫星，检查是否是恶意节点
+    for (let i = 1; i <= props.satelliteCount; i++) {
+      if (blockchainVisualizerRef.value.isMaliciousSatellite(i)) {
+        maliciousSatellites.push(i);
+      }
+    }
+  }
+  
+  console.log('同步恶意卫星状态：', maliciousSatellites);
+  
+  // 遍历所有恶意卫星，将其标记为故障（注意：需要将1-based索引转换为0-based索引）
+  maliciousSatellites.forEach(satelliteIndex => {
+    // BlockchainUploadVisualizer使用1-based索引，而SatelliteFault使用0-based索引
+    const adjustedIndex = satelliteIndex - 1;
+    console.log(`将恶意卫星 ${satelliteIndex} 标记为故障（索引：${adjustedIndex}）`);
+    satelliteFaultRef.value.setSatelliteFault(adjustedIndex, true);
+  });
+}
+
 // 获取卫星故障菜单文本
 const getSatelliteFaultMenuText = () => {
   if (contextMenu.value?.satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
@@ -1270,6 +1306,12 @@ const handleRepair = async () => {
     // 执行实际的卫星修复
     if (satelliteFaultRef.value?.repairSatellite) {
       satelliteFaultRef.value.repairSatellite(satelliteIndex)
+    }
+    
+    // 修复区块链数据 - 重新生成正确的区块数据
+    if (blockchainVisualizerRef.value?.repairSatellite) {
+      // 注意：BlockchainUploadVisualizer组件使用1-based索引，而SatelliteFault使用0-based索引
+      blockchainVisualizerRef.value.repairSatellite(satelliteIndex + 1)
     }
 
     repairModal.value.repairTime = parseFloat(theoreticalRepairTime)

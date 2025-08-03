@@ -53,8 +53,8 @@ const props = defineProps({
   }
 });
 
-// 定义事件发射器，用于通知父组件上链完成
-const emit = defineEmits(['uploadComplete']);
+// 定义事件发射器，用于通知父组件上链完成和恶意节点初始化完成
+const emit = defineEmits(['uploadComplete', 'malicious-satellites-initialized']);
 
 // 恶意节点相关数据
 const maliciousSatellites = ref([]);
@@ -75,6 +75,9 @@ const initMaliciousSatellites = () => {
   maliciousSatellites.value = shuffled.slice(0, maliciousCount);
 
   console.log('恶意节点：', maliciousSatellites.value);
+  
+  // 通知父组件恶意节点已初始化
+  emit('malicious-satellites-initialized', maliciousSatellites.value);
 };
 
 // 检查卫星是否是恶意节点
@@ -82,9 +85,48 @@ const isMaliciousSatellite = (index) => {
   return maliciousSatellites.value.includes(index);
 };
 
+// 在组件挂载时初始化恶意节点
+onMounted(() => {
+  initMaliciousSatellites();
+});
+
+// 监听卫星数量变化，重新初始化恶意节点
+watch(() => props.satelliteCount, () => {
+  initMaliciousSatellites();
+});
+
+// 修复卫星节点方法
+const repairSatellite = (satelliteIndex) => {
+  // 检查是否是恶意节点
+  if (isMaliciousSatellite(satelliteIndex)) {
+    // 从恶意节点列表中移除
+    const index = maliciousSatellites.value.indexOf(satelliteIndex);
+    if (index !== -1) {
+      maliciousSatellites.value.splice(index, 1);
+    }
+    
+    // 清除该卫星的所有错误区块状态
+    Object.keys(satelliteBlockStatuses.value).forEach(key => {
+      if (key.startsWith(`${satelliteIndex}-`)) {
+        delete satelliteBlockStatuses.value[key];
+      }
+    });
+    
+    // 重新生成该卫星的所有区块数据为正常状态
+    blocks.value.forEach((_, blockIndex) => {
+      satelliteBlockStatuses.value[`${satelliteIndex}-${blockIndex}`] = 'normal';
+    });
+    
+    return true; // 修复成功
+  }
+  
+  return false; // 不是恶意节点，无需修复
+};
+
 // 定义暴露给父组件的方法
 defineExpose({
-  isMaliciousSatellite
+  isMaliciousSatellite,
+  repairSatellite
 });
 
 // 为恶意节点生成区块状态
@@ -123,27 +165,11 @@ const getSatelliteBlockStatus = (satelliteIndex, blockIndex) => {
   return satelliteBlockStatuses.value[key];
 };
 
-// 获取卫星区块内容
-const getSatelliteBlockContent = (satelliteIndex, blockIndex, block) => {
-  const status = getSatelliteBlockStatus(satelliteIndex, blockIndex);
-
-  if (status === 'empty') {
-    return 'null'; // 不出块显示null
-  } else if (status === 'error') {
-    // 错误块显示错误的哈希值，传入卫星索引确保同一行中不同节点的错误区块有不同的哈希值
-    return formatEncryptedData(generateErrorHash(block.encryptedData, satelliteIndex));
-  } else {
-    // 正常块显示正常内容
-    return formatEncryptedData(block.encryptedData);
-  }
-};
-
 // 错误哈希值缓存 - 使用卫星索引和原始哈希的组合作为键
 const errorHashCache = ref({});
 
-// 生成错误的哈希值 - 在原始哈希的基础上，添加随机数后再次哈希
-// 添加satelliteIndex参数，确保同一行中不同节点的错误区块有不同的哈希值
-const generateErrorHash = (originalHash, satelliteIndex = null) => {
+// 同步版本的错误哈希生成函数，用于模板中调用
+const generateErrorHashSync = (originalHash, satelliteIndex = null) => {
   // 创建缓存键，包含卫星索引
   const cacheKey = satelliteIndex ? `${originalHash}-${satelliteIndex}` : originalHash;
   
@@ -162,8 +188,7 @@ const generateErrorHash = (originalHash, satelliteIndex = null) => {
       `${originalHash}${randomNum}${satelliteIndex}` : 
       `${originalHash}${randomNum}`;
     
-    // 使用简化的哈希算法（非异步）来避免在模板中使用异步函数的问题
-    // 这是一个简单的字符串哈希函数
+    // 使用简单的字符串哈希算法作为同步版本的备用方案
     let hash = 0;
     for (let i = 0; i < modifiedData.length; i++) {
       const char = modifiedData.charCodeAt(i);
@@ -171,7 +196,7 @@ const generateErrorHash = (originalHash, satelliteIndex = null) => {
       hash = hash & hash; // 转换为32位整数
     }
     
-    // 转换为16进制字符串，并填充到64个字符（与SHA-256哈希长度相同）
+    // 转换为16进制字符串
     let errorHash = Math.abs(hash).toString(16);
     
     // 通过重复哈希值并截取来生成64个字符的哈希值
@@ -182,6 +207,49 @@ const generateErrorHash = (originalHash, satelliteIndex = null) => {
     
     // 缓存结果
     errorHashCache.value[cacheKey] = errorHash;
+    
+    // 异步更新缓存 - 使用SHA-256算法计算更准确的哈希值
+    generateErrorHash(originalHash, satelliteIndex).then(sha256Hash => {
+      errorHashCache.value[cacheKey] = sha256Hash;
+    });
+    
+    return errorHash;
+  } catch (error) {
+    console.error('生成错误哈希时出错:', error);
+    return 'error_' + originalHash.substring(0, 6); // 发生错误时的备用方案
+  }
+};
+
+// 获取卫星区块内容
+const getSatelliteBlockContent = (satelliteIndex, blockIndex, block) => {
+  const status = getSatelliteBlockStatus(satelliteIndex, blockIndex);
+
+  if (status === 'empty') {
+    return 'null'; // 不出块显示null
+  } else if (status === 'error') {
+    // 错误块显示错误的哈希值，传入卫星索引确保同一行中不同节点的错误区块有不同的哈希值
+    return formatEncryptedData(generateErrorHashSync(block.encryptedData, satelliteIndex));
+  } else {
+    // 正常块显示正常内容
+    return formatEncryptedData(block.encryptedData);
+  }
+};
+
+// 生成错误的哈希值 - 在原始哈希的基础上，添加随机数后使用SHA-256算法再次哈希
+// 添加satelliteIndex参数，确保同一行中不同节点的错误区块有不同的哈希值
+const generateErrorHash = async (originalHash, satelliteIndex = null) => {
+  // 如果没有原始哈希值，返回默认错误哈希
+  if (!originalHash) return 'error_hash';
+  
+  try {
+    // 在原始哈希末尾添加0-20的随机数和卫星索引（如果有）
+    const randomNum = Math.floor(Math.random() * 21); // 0-20的随机数
+    const modifiedData = satelliteIndex ? 
+      `${originalHash}${randomNum}${satelliteIndex}` : 
+      `${originalHash}${randomNum}`;
+    
+    // 使用SHA-256算法计算哈希
+    const errorHash = await hashData(modifiedData);
     
     return errorHash;
   } catch (error) {
@@ -242,9 +310,7 @@ const processUploadedData = async (data) => {
   // 清空现有区块
   blocks.value = [];
 
-  // 初始化恶意节点
-  initMaliciousSatellites();
-
+  // 不再重新初始化恶意节点，保持组件挂载时确定的恶意节点不变
   // 创建文件ID到区块的映射，确保每个文件只创建一个区块
   const fileIdMap = new Map();
 
