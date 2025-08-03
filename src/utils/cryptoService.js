@@ -165,6 +165,21 @@ class CryptoService {
   }
 
   /**
+   * 生成随机密钥
+   * @returns {string} 随机生成的密钥
+   */
+  generateRandomKey() {
+    // 生成32字节（256位）的随机数据
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    
+    // 转换为十六进制字符串
+    return Array.from(randomBytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  /**
    * 清理敏感数据
    */
   destroy() {
