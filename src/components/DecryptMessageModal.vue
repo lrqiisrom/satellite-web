@@ -59,6 +59,14 @@ const props = defineProps({
   receiverIndex: {
     type: Number,
     default: -1
+  },
+  isTampered: {
+    type: Boolean,
+    default: false
+  },
+  isInjected: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -76,10 +84,19 @@ const isSuccess = ref(false)
 const decryptedMessage = ref('')
 
 // 计算结果状态文本
-const resultStatus = computed(() => {
-  return isSuccess.value 
-    ? "✅ 有权解密，解密成功！密文未被篡改" 
-    : "❌ 未被授予解密权限！解密失败！"
+  const resultStatus = computed(() => {
+    if (isSuccess.value) {
+      return "✅ 有权解密，解密成功！密文未被篡改"
+    } else {
+      // 检查是否是篡改或注入消息
+      if (props.isTampered) {
+        return "密文被篡改，解密失败"
+      } else if (props.isInjected) {
+        return "密文被注入，解密失败"
+      } else {
+        return "❌ 未被授予解密权限！解密失败！"
+      }
+    }
 })
 
 // 监听visible变化，重置状态

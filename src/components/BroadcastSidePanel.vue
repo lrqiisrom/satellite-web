@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div style="position: relative; z-index: 20000;">
     <!-- 遮罩层，防止事件穿透 -->
     <div class="overlay" v-if="visible" @click="closePanel"></div>
     
@@ -159,8 +159,8 @@ defineExpose({
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 9999; /* 大幅提高遮罩层z-index */
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 20000; /* 进一步提高遮罩层z-index，确保高于所有其他元素 */
   pointer-events: auto; /* 确保可以接收点击事件 */
 }
 
@@ -173,7 +173,7 @@ defineExpose({
   background: rgba(15, 23, 42, 0.95);
   border-left: 1px solid #475569;
   box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
-  z-index: 10000; /* 大幅提高侧边栏z-index */
+  z-index: 20001; /* 进一步提高侧边栏z-index，确保高于遮罩层和所有其他元素 */
   transition: right 0.3s ease-in-out;
   display: flex;
   flex-direction: column;

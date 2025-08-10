@@ -8,6 +8,8 @@
       @message-sent="handleMessageSent"
       @message-received="handleMessageReceived"
       @message-decrypted="handleMessageDecrypted"
+      @broadcast-panel-opened="handleBroadcastPanelOpened"
+      @broadcast-panel-closed="handleBroadcastPanelClosed"
     />
     <!-- Starry background -->
     <div class="starry-background">
@@ -29,11 +31,22 @@
 
       <!-- Communication lines between satellites only -->
       <div class="communication-lines">
-        <div v-for="[i, j] in satelliteLinePairs" :key="'full-line-' + i + '-' + j" class="comm-line" :style="getLineStyle(i, j)" v-show="isAnimationPaused"></div>
+        <div v-for="[i, j] in satelliteLinePairs" :key="'full-line-' + i + '-' + j" class="comm-line" :style="getLineStyle(i, j)" v-show="isAnimationPaused || communicationModeEnabled"></div>
+        <!-- 广播消息的虚线 -->
+        <div v-for="line in broadcastLines" :key="'broadcast-line-' + line.from + '-' + line.to" 
+             class="comm-line broadcast-line" 
+             :class="{
+               'tampered-broadcast': line.type === 'tampered',
+               'injected-broadcast': line.type === 'injected'
+             }" 
+             :style="getBroadcastLineStyle(line.from, line.to)" 
+             v-show="line.active && (isAnimationPaused || communicationModeEnabled)">
+          <div class="broadcast-arrow"></div>
+        </div>
       </div>
 
       <!-- Satellites -->
-      <div v-for="(satellite, index) in satellites" :key="index" :ref="el => satelliteRefs[index] = el" class="satellite" :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }" @click="!contextMenu.visible && showContextMenu($event, index)">
+      <div v-for="(satellite, index) in satellites" :key="index" :ref="el => satelliteRefs[index] = el" class="satellite" :class="{ 'communication-mode': communicationModeEnabled }" :style="{ left: satellite.x + 'px', top: satellite.y + 'px', transform: 'translate(-50%, -50%)' }" @click="!contextMenu.visible && showContextMenu($event, index)">
         <img :src="satelliteFaultRef?.getSatelliteImagePath(index) || require('../assets/satellite.jpg')" alt="卫星" class="satellite-img" style="width: 40px; height: 40px; position: absolute; left: 0; top: 0; cursor: pointer; z-index: 11;" />
         <!-- Satellite Number Label -->
         <div class="satellite-number">
@@ -52,15 +65,32 @@
         }" @click="console.log('context-menu-root-clicked')">
         <div class="menu-arrow" :class="contextMenu.arrowPosition"></div>
         <div class="menu-items">
-          <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click="handleMenuAction('query')">
-            查询数据
-          </button>
-          <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')">
-            {{ getSatelliteFaultMenuText() }}
-          </button>
-          <button type="button" class="menu-item" @click="handleMenuAction('broadcast')">
-            📡 广播消息
-          </button>
+          <!-- 非通信模式下显示查询和故障菜单项 -->
+          <template v-if="!communicationModeEnabled">
+            <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click="handleMenuAction('query')">
+              查询数据
+            </button>
+            <button type="button" class="menu-item" :disabled="!hasUploadedFiles" @click.stop.prevent="console.log('menu-satellite-fault-clicked');handleMenuAction('satellite-fault')">
+              {{ getSatelliteFaultMenuText() }}
+            </button>
+          </template>
+          <!-- 通信模式下显示广播消息和查看消息菜单项 -->
+          <template v-if="communicationModeEnabled">
+            <button type="button" class="menu-item" @click="handleMenuAction('broadcast')">
+              📡 广播消息
+            </button>
+            <button type="button" class="menu-item" @click="handleMenuAction('view-message')">
+              👁️ 查看消息
+            </button>
+            <button 
+              type="button" 
+              class="menu-item" 
+              @click="handleMenuAction('unkind-satellite')"
+              :disabled="!satelliteFaultRef?.canSetSatelliteUnkind(contextMenu.satelliteIndex)"
+            >
+              {{ getUnkindSatelliteMenuText(contextMenu.satelliteIndex) }}
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -81,6 +111,15 @@
       <button class="function-btn upload-btn" @click="handleUploadFile">
         📁 上传数据
       </button>
+    </div>
+    
+    <!-- Communication Control (Right Top Corner) -->
+    <div class="communication-control-wrapper" v-show="showCommunicationControl">
+      <CommunicationControl 
+        :initial-state="communicationModeEnabled" 
+        @update:communication-mode="communicationModeEnabled = $event" 
+        @communication-toggled="handleCommunicationToggle"
+      />
     </div>
 
 
@@ -117,12 +156,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, defineProps, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, defineProps, watch, provide } from 'vue'
 import SatelliteFault from './SatelliteFault.vue'
 import QueryResultModal from './QueryResultModal.vue'
 import SatelliteRepairModal from './SatelliteRepairModal.vue'
 import BlockchainUploadVisualizer from './BlockchainUploadVisualizer.vue'
 import SatelliteMessaging from './SatelliteMessaging.vue'
+import CommunicationControl from './CommunicationControl.vue'
 import cryptoService from '@/utils/cryptoService'
 
 // 加密和解密函数
@@ -173,9 +213,12 @@ const props = defineProps({
 const satelliteRefs = ref([])
 const fileInput = ref(null)
 const satelliteFaultRef = ref(null)
+// 提供satelliteFaultRef给子组件
+provide('satelliteFaultRef', satelliteFaultRef)
 const blockchainVisualizerRef = ref(null)
 const satelliteMessagingRef = ref(null)
 const uploadedData = ref([]) // 存储上传的数据
+const communicationModeEnabled = ref(false) // 通信模式开关状态
 
 const earthCenter = { x: 600, y: 600 } // system-container中心
 const satelliteRadius = 325 // 卫星轨道半径，与红圈半径一致（650px/2）
@@ -339,15 +382,95 @@ const getLineStyle = (fromIndex, toIndex) => {
   }
 }
 
-// 添加一个变量来保存动画状态
+// 添加变量来保存动画状态
 let isAnimationPaused = false;
+
+// 获取广播线样式
+const getBroadcastLineStyle = (fromIndex, toIndex) => {
+  const from = satellites.value[fromIndex]
+  const to = satellites.value[toIndex]
+  // 卫星中心点坐标
+  const fromCenterX = from.x;
+  const fromCenterY = from.y;
+  const toCenterX = to.x;
+  const toCenterY = to.y;
+  const deltaX = toCenterX - fromCenterX
+  const deltaY = toCenterY - fromCenterY
+  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+  const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI
+  
+  // 查找对应的广播线对象，获取类型
+  const lineObj = broadcastLines.value.find(line => line.from === fromIndex && line.to === toIndex)
+  const lineType = lineObj?.type || 'normal'
+  
+  // 根据类型设置不同的样式
+  let borderStyle = '1px dashed rgba(0,255,0,0.8)' // 默认绿色虚线
+  let zIndexValue = 10
+  
+  if (lineType === 'tampered' || lineType === 'injected') {
+    // 篡改或注入消息使用红色虚线
+    borderStyle = '2px dashed rgba(255,0,0,0.8)'
+    zIndexValue = 11 // 确保红色线显示在其他线的上方
+  } else if (lineType === 'intercept') {
+    // 拦截动画使用绿色虚线，但稍粗一些以示区别
+    borderStyle = '2px dashed rgba(0,255,0,0.8)'
+    zIndexValue = 11 // 确保拦截线显示在其他线的上方
+  }
+  
+  console.log(`广播线样式: ${fromIndex} -> ${toIndex}, 类型: ${lineType}, 样式: ${borderStyle}`)
+  
+  return {
+    position: 'absolute',
+    left: fromCenterX + 'px',
+    top: fromCenterY + 'px',
+    width: distance + 'px',
+    height: '1px',
+    transformOrigin: '0 50%',
+    transform: `rotate(${angle}deg)`,
+    borderTop: borderStyle,
+    zIndex: zIndexValue
+  }
+}
+
+// 处理通信模式切换
+const handleCommunicationToggle = (value) => {
+  // 调用原有的通信模式切换逻辑
+  toggleCommunicationMode(value);
+}
+
+// 切换通信模式
+const toggleCommunicationMode = (value = null) => {
+  // 如果提供了value参数，则直接使用；否则切换当前状态
+  if (value !== null) {
+    communicationModeEnabled.value = value;
+  } else {
+    communicationModeEnabled.value = !communicationModeEnabled.value;
+  }
+  
+  if (communicationModeEnabled.value) {
+    // 开启通信模式时，暂停卫星动画
+    if (animationFrameId && !isAnimationPaused) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+      isAnimationPaused = true;
+      // 确保卫星位置不再变化
+      updateSatellitePositions();
+    }
+  } else {
+    // 关闭通信模式时，恢复卫星动画
+    if (isAnimationPaused && !animationFrameId) {
+      isAnimationPaused = false;
+      animateSatellites();
+    }
+  }
+}
 
 const showContextMenu = (event, index) => {
   event.stopPropagation()
   const satellite = satellites.value[index]
 
-  // 暂停卫星动画
-  if (animationFrameId && !isAnimationPaused) {
+  // 如果不是通信模式，则暂停卫星动画
+  if (!communicationModeEnabled.value && animationFrameId && !isAnimationPaused) {
     // 立即取消当前动画帧
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
@@ -397,8 +520,8 @@ const showContextMenu = (event, index) => {
 const closeContextMenu = () => {
   contextMenu.value.visible = false
 
-  // 恢复卫星动画
-  if (isAnimationPaused && !animationFrameId) {
+  // 只有在非通信模式下才恢复卫星动画
+  if (!communicationModeEnabled.value && isAnimationPaused && !animationFrameId) {
     isAnimationPaused = false;
     animateSatellites();
   }
@@ -441,6 +564,37 @@ const handleMenuAction = (action) => {
       }
       break
 
+    case 'view-message':
+      if (contextMenu.value?.satelliteIndex !== -1) {
+        // 检查是否在拦截期间
+        if (window.isIntercepting) {
+          alert('消息正在被拦截，请稍后再试')
+        } else {
+          // 打开查看消息弹窗
+          satelliteMessagingRef.value?.openViewMessageModal(contextMenu.value.satelliteIndex)
+        }
+        closeContextMenu()
+      }
+      break
+      
+    case 'unkind-satellite':
+      if (contextMenu.value?.satelliteIndex !== -1) {
+        try {
+          const satelliteIndex = contextMenu.value.satelliteIndex
+          const isUnkind = satelliteFaultRef.value.isSatelliteUnkind(satelliteIndex)
+
+          // 切换卫星恶意状态
+          satelliteFaultRef.value?.toggleSatelliteUnkind?.(satelliteIndex)
+          console.log('系统中切换卫星恶意状态:', satelliteIndex, '新状态:', !isUnkind, 'ref值:', satelliteFaultRef.value.unkindSatellite)
+          alert(`卫星 ${satelliteIndex + 1} 状态已切换为: ${isUnkind ? '正常' : '恶意'}`)
+        } catch (error) {
+          console.error('Error handling unkind satellite action:', error)
+          alert('操作失败，请稍后重试')
+        }
+      }
+      closeContextMenu()
+      break
+
     default:
       console.warn('Unknown menu action:', action)
       closeContextMenu()
@@ -452,16 +606,128 @@ const handleMenuAction = (action) => {
 // 处理消息发送事件
 const handleMessageSent = (data) => {
   console.log('消息已发送:', data)
+  
+  // 检查是否是拦截动画
+  if (data.showInterceptAnimation) {
+    console.log('显示拦截动画:', '发送方:', data.senderIndex, '恶意卫星:', data.interceptedBy)
+    showBroadcastAnimation(data.senderIndex, data.receiverIndex, data)
+    return
+  }
+  
+  // 显示广播动画效果
+  // 检查是否是篡改或注入消息
+  if (data.message === 'TAMPERED' || data.message === 'INJECTED' || data.isTampered || data.isInjected) {
+    // 对于篡改或注入消息，需要传递接收方索引
+    const messageType = data.message || (data.isTampered ? 'TAMPERED' : 'INJECTED')
+    console.log('显示篡改/注入消息动画:', messageType, '发送方:', data.senderIndex, '接收方:', data.receiverIndex)
+    console.log('消息内容:', data.ciphertext, '原始密文:', data.originalCiphertext)
+    console.log('准备显示广播动画，类型:', messageType)
+    showBroadcastAnimation(data.senderIndex, data.receiverIndex, messageType)
+  } else {
+    // 正常广播消息
+    console.log('显示正常广播动画:', '发送方:', data.senderIndex, '接收方:', data.receiverIndex)
+    showBroadcastAnimation(data.senderIndex)
+  }
 }
 
 // 处理消息接收事件
 const handleMessageReceived = (data) => {
   console.log('消息已接收:', data)
+}  
+
+// 广播动画相关状态
+const broadcastLines = ref([])
+
+// 显示广播动画效果
+const showBroadcastAnimation = (senderIndex, receiverIndex, messageType) => {
+  // 清除之前的广播线
+  broadcastLines.value = []
+  
+  // 检查是否是拦截动画
+  if (messageType?.showInterceptAnimation) {
+    const interceptedBy = messageType.interceptedBy
+    console.log('显示拦截动画:', '发送方:', senderIndex, '恶意卫星:', interceptedBy)
+    
+    // 显示从发送方到恶意节点的绿色虚线
+    broadcastLines.value.push({
+      from: senderIndex,
+      to: interceptedBy,
+      active: true,
+      type: 'normal' // 使用正常类型显示绿色虚线
+    })
+    
+    // 不再显示从恶意节点到其他节点的线条，这将在篡改或注入时显示
+    
+    return
+  }
+  
+  // 如果是篡改或注入消息，显示从恶意卫星到所有其他节点（除发送方外）的红色虚线
+  if (messageType === 'TAMPERED' || messageType === 'INJECTED' || messageType?.isTampered || messageType?.isInjected) {
+    const messageTypeStr = (messageType === 'TAMPERED' || messageType?.isTampered) ? 'tampered' : 'injected';
+    
+    // 获取恶意节点索引
+    const unkindSatelliteIndex = satelliteFaultRef.value?.unkindSatellite;
+    console.log('篡改/注入消息，恶意节点索引:', unkindSatelliteIndex);
+    
+    if (unkindSatelliteIndex !== undefined) {
+      // 保留发送方到恶意节点的绿色虚线
+      broadcastLines.value.push({
+        from: senderIndex,
+        to: unkindSatelliteIndex,
+        active: true,
+        type: 'normal' // 使用正常类型显示绿色虚线
+      });
+      
+      // 从恶意节点到其余所有正常节点（除发送方外）显示红色虚线
+      for (let i = 0; i < props.satelliteCount; i++) {
+        if (i !== unkindSatelliteIndex && i !== senderIndex) {
+          broadcastLines.value.push({
+            from: unkindSatelliteIndex,
+            to: i,
+            active: true,
+            type: messageTypeStr // 使用篡改或注入类型显示红色虚线
+          })
+          console.log(`添加从恶意节点 ${unkindSatelliteIndex} 到节点 ${i} 的红色虚线，类型: ${messageTypeStr}`)
+        }
+      }
+    }
+    return
+  }
+  
+  // 正常广播消息，为每个目标卫星创建广播线
+  for (let i = 0; i < props.satelliteCount; i++) {
+    if (i !== senderIndex) {
+      broadcastLines.value.push({
+        from: senderIndex,
+        to: i,
+        active: true,
+        type: 'normal'
+      })
+    }
+  }
+  
+  // 不设置自动清除，保持显示直到下次发送消息
 }
 
 // 处理消息解密事件
 const handleMessageDecrypted = (data) => {
   console.log('消息已解密:', data)
+  // 这里可以添加额外的处理逻辑，如果需要的话
+}
+
+// 控制通信控制按钮的显示和隐藏
+const showCommunicationControl = ref(true)
+
+// 处理广播侧边栏打开事件
+const handleBroadcastPanelOpened = () => {
+  console.log('广播侧边栏已打开')
+  showCommunicationControl.value = false
+}
+
+// 处理广播侧边栏关闭事件
+const handleBroadcastPanelClosed = () => {
+  console.log('广播侧边栏已关闭')
+  showCommunicationControl.value = true
 }
 
 // 处理上链完成事件
@@ -909,6 +1175,20 @@ const getSatelliteFaultMenuText = () => {
     }
   }
   return '卫星故障'
+}
+
+// 获取恶意卫星菜单文本
+const getUnkindSatelliteMenuText = (satelliteIndex) => {
+  if (satelliteIndex !== undefined && satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteUnkind) {
+    try {
+      const isUnkind = satelliteFaultRef.value.isSatelliteUnkind(satelliteIndex)
+      return isUnkind ? '正常卫星' : '恶意卫星'
+    } catch (error) {
+      console.warn('Error getting satellite unkind status:', error)
+      return '恶意卫星'
+    }
+  }
+  return '恶意卫星'
 }
 
 // 获取卫星故障状态
@@ -1408,10 +1688,21 @@ onUnmounted(() => {
   cursor: pointer;
   z-index: 10;
   filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
+  transition: filter 0.3s ease, transform 0.3s ease;
 }
 
 .satellite:hover {
   filter: brightness(1.3) drop-shadow(0 0 15px rgba(59, 130, 246, 0.6));
+}
+
+.satellite.communication-mode {
+  filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.8));
+}
+
+.satellite.communication-mode .satellite-img {
+  border: 2px solid #60a5fa;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #3b82f6, 0 0 20px rgba(59, 130, 246, 0.5);
 }
 
 .satellite.top {
@@ -1820,6 +2111,16 @@ onUnmounted(() => {
   gap: 15px;
 }
 
+/* 将通信控制按钮放到右上角 */
+.communication-control-wrapper {
+  position: fixed;
+  top: 30px;
+  right: 30px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+}
+
 .function-btn {
   padding: 12px 20px;
   background: rgba(17, 24, 39, 0.9);
@@ -1852,6 +2153,20 @@ onUnmounted(() => {
 .query-btn:hover {
   border-color: #f59e0b;
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+
+
+@keyframes pulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
 }
 
 
@@ -2012,5 +2327,67 @@ onUnmounted(() => {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
   border-radius: 3px;
   transition: width 0.1s ease-out;
+}
+
+/* 广播线和箭头样式 */
+.broadcast-line {
+  position: relative;
+  background-image: linear-gradient(to right, rgba(0, 255, 0, 0) 0%, rgba(0, 255, 0, 0) 100%), 
+                    repeating-linear-gradient(to right, rgba(0, 255, 0, 0) 0px, rgba(0, 255, 0, 0) 15px, rgba(0, 255, 0, 0.8) 15px, rgba(0, 255, 0, 0.8) 20px);
+  background-size: 100% 1px, 20px 10px;
+  background-position: 0 0, 0 0;
+  background-repeat: no-repeat, repeat-x;
+  border-top: none !important;
+  animation: moveArrows 1s linear infinite;
+}
+
+/* 篡改和注入消息的红色虚线 */
+.tampered-broadcast, .injected-broadcast, .broadcast-line[style*="rgba(255,0,0,0.8)"] {
+  background-image: linear-gradient(to right, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0) 100%), 
+                    repeating-linear-gradient(to right, rgba(255, 0, 0, 0) 0px, rgba(255, 0, 0, 0) 15px, rgba(255, 0, 0, 0.8) 15px, rgba(255, 0, 0, 0.8) 20px);
+}
+
+/* 广播箭头样式 */
+.broadcast-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 8px;
+  border-color: transparent transparent transparent rgba(0, 255, 0, 0.8);
+  top: -3.5px;
+  right: 0;
+  animation: moveArrows 1s linear infinite;
+}
+
+/* 篡改和注入消息的红色箭头 */
+.tampered-broadcast .broadcast-arrow, .injected-broadcast .broadcast-arrow, .broadcast-line[style*="rgba(255,0,0,0.8)"] .broadcast-arrow {
+  border-color: transparent transparent transparent rgba(255, 0, 0, 0.8);
+}
+
+/* 箭头移动动画 */
+@keyframes moveArrows {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 0 0, 20px 0;
+  }
+}
+
+.broadcast-arrow {
+  position: absolute;
+  right: 0;
+  top: -4px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 8px solid rgba(0, 255, 0, 0.8);
+}
+
+/* 篡改和注入消息的红色箭头 */
+.tampered-broadcast .broadcast-arrow, .injected-broadcast .broadcast-arrow, .broadcast-line[style*="rgba(255,0,0,0.8)"] .broadcast-arrow {
+  border-left-color: rgba(255, 0, 0, 0.8);
 }
 </style>

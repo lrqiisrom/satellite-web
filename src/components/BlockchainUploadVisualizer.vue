@@ -453,7 +453,7 @@ onMounted(() => {
 <style scoped>
 .blockchain-visualizer {
   position: absolute;
-  top: 50%;
+  top: 55%;
   left: 0;
   transform: translateY(-50%);
   height: 80vh;

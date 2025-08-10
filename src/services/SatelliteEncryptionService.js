@@ -67,8 +67,8 @@ class SatelliteEncryptionService {
    * @returns {Promise<Object>} - 解密结果
    */
   async decryptMessage({ satelliteIndex, ciphertext, senderIndex, receiverIndex }) {
-    // 检查是否有权限解密
-    if (satelliteIndex !== receiverIndex) {
+    // 检查是否有权限解密（接收方或发送方都有权限）
+    if (satelliteIndex !== receiverIndex && satelliteIndex !== senderIndex) {
       return {
         success: false,
         message: null,
