@@ -126,7 +126,7 @@
 
 
     <!-- Query Modal -->
-    <QueryResultModal :visible="queryModal.visible" :satellite-index="queryModal.satelliteIndex" v-model:query-text="queryModal.queryText" v-model:block-start="queryModal.blockStart" v-model:block-end="queryModal.blockEnd" :total-blocks="totalBlocks" :loading="queryModal.loading" :results="queryModal.results" :ciphertext="queryModal.ciphertext" :query-time="queryModal.queryTime" :decrypting="queryModal.decrypting" :decryption-result="queryModal.decryptionResult" @close="closeQueryModal" @query="handleQuery" @decrypt="handleDecryptAndVerify" />
+    <QueryResultModal :visible="queryModal.visible" :satellite-index="queryModal.satelliteIndex" v-model:query-text="queryModal.queryText" v-model:block-start="queryModal.blockStart" v-model:block-end="queryModal.blockEnd" :total-blocks="totalBlocks" :loading="queryModal.loading" :results="queryModal.results" :ciphertext="queryModal.ciphertext" :query-time="queryModal.queryTime" :decrypting="queryModal.decrypting" :decryption-result="queryModal.decryptionResult" :is-faulty="queryModal.isFaulty" @close="closeQueryModal" @query="handleQuery" @decrypt="handleDecryptAndVerify" />
 
     <!-- Upload Loading Modal -->
     <div v-if="uploadLoading" class="modal-overlay">
@@ -316,7 +316,13 @@ const queryModal = ref({
   decrypting: false,
   decryptionResult: '',
   verificationTime: 0,
-  originalBlockIds: null
+  originalBlockIds: null,
+  // 降级查询支持
+  degraded: false,
+  isFaulty: false,
+  faultyBlocks: null,   // { empty: number[], error: number[], all: number[] }
+  missingBlockIds: [],  // 本次查询命中但被过滤（故障）的区块
+  presentBlockIds: []   // 本次查询实际可用区块
 })
 
 // Repair Notification State
@@ -404,16 +410,16 @@ const getBroadcastLineStyle = (fromIndex, toIndex) => {
   const lineType = lineObj?.type || 'normal'
   
   // 根据类型设置不同的样式
-  let borderStyle = '1px dashed rgba(0,255,0,0.8)' // 默认绿色虚线
+  let borderStyle = '3px dashed rgba(0,255,0,0.8)' // 默认绿色虚线加粗
   let zIndexValue = 10
   
   if (lineType === 'tampered' || lineType === 'injected') {
-    // 篡改或注入消息使用红色虚线
-    borderStyle = '2px dashed rgba(255,0,0,0.8)'
+    // 篡改或注入消息使用红色虚线加粗
+    borderStyle = '3px dashed rgba(255,0,0,0.8)'
     zIndexValue = 11 // 确保红色线显示在其他线的上方
   } else if (lineType === 'intercept') {
-    // 拦截动画使用绿色虚线，但稍粗一些以示区别
-    borderStyle = '2px dashed rgba(0,255,0,0.8)'
+    // 拦截动画使用绿色虚线加粗
+    borderStyle = '3px dashed rgba(0,255,0,0.8)'
     zIndexValue = 11 // 确保拦截线显示在其他线的上方
   }
   
@@ -424,7 +430,7 @@ const getBroadcastLineStyle = (fromIndex, toIndex) => {
     left: fromCenterX + 'px',
     top: fromCenterY + 'px',
     width: distance + 'px',
-    height: '1px',
+    height: '3px',
     transformOrigin: '0 50%',
     transform: `rotate(${angle}deg)`,
     borderTop: borderStyle,
@@ -678,17 +684,15 @@ const showBroadcastAnimation = (senderIndex, receiverIndex, messageType) => {
         type: 'normal' // 使用正常类型显示绿色虚线
       });
       
-      // 从恶意节点到其余所有正常节点（除发送方外）显示红色虚线
-      for (let i = 0; i < props.satelliteCount; i++) {
-        if (i !== unkindSatelliteIndex && i !== senderIndex) {
-          broadcastLines.value.push({
-            from: unkindSatelliteIndex,
-            to: i,
-            active: true,
-            type: messageTypeStr // 使用篡改或注入类型显示红色虚线
-          })
-          console.log(`添加从恶意节点 ${unkindSatelliteIndex} 到节点 ${i} 的红色虚线，类型: ${messageTypeStr}`)
-        }
+      // 仅从恶意节点到接收方显示红色虚线
+      if (receiverIndex !== undefined && receiverIndex !== unkindSatelliteIndex && receiverIndex !== senderIndex) {
+        broadcastLines.value.push({
+          from: unkindSatelliteIndex,
+          to: receiverIndex,
+          active: true,
+          type: messageTypeStr // 使用篡改或注入类型显示红色虚线
+        })
+        console.log(`添加从恶意节点 ${unkindSatelliteIndex} 到接收方 ${receiverIndex} 的红色虚线，类型: ${messageTypeStr}`)
       }
     }
     return
@@ -891,30 +895,49 @@ const handleFileSelect = (event) => {
 const showQueryModal = (satelliteIndex = -1) => {
   console.log('showQueryModal called for satellite', satelliteIndex);
 
-  // 检查卫星是否故障，如果故障则显示弹窗提示
+  // 允许故障卫星打开（降级模式），不再直接拦截
+  let isFaulty = false
   if (satelliteIndex !== -1 && satelliteFaultRef.value?.isSatelliteFaulty) {
     try {
-      const isFaulty = satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
-      if (isFaulty) {
-        alert('卫星故障，请先修复！')
-        // 如果卫星故障，不打开查询模态框，但需要关闭上下文菜单并恢复动画
-        closeContextMenu()
-        return
-      }
+      isFaulty = !!satelliteFaultRef.value.isSatelliteFaulty(satelliteIndex)
     } catch (error) {
       console.error('Error checking satellite fault status:', error)
-      alert('检查卫星状态失败，请稍后重试')
-      // 如果检查失败，不打开查询模态框，但需要关闭上下文菜单并恢复动画
-      closeContextMenu()
-      return
     }
   }
 
-  // 如果卫星正常，直接打开查询模态框
+  // 打开查询模态并初始化字段
   queryModal.value.visible = true
   queryModal.value.queryText = ''
   queryModal.value.results = []
+  queryModal.value.ciphertext = ''
+  queryModal.value.decryptionResult = ''
+  queryModal.value.loading = false
+  queryModal.value.decrypting = false
   queryModal.value.satelliteIndex = satelliteIndex
+
+  // 设置降级信息，并尝试从上链可视化组件获取该卫星的故障区块集合
+  queryModal.value.isFaulty = isFaulty
+  queryModal.value.degraded = isFaulty
+  queryModal.value.faultyBlocks = null
+  queryModal.value.missingBlockIds = []
+  queryModal.value.presentBlockIds = []
+  if (isFaulty && blockchainVisualizerRef.value?.getFaultyBlocksForSatellite) {
+    try {
+      // BlockchainUploadVisualizer 使用 1-based 索引
+      const faulty = blockchainVisualizerRef.value.getFaultyBlocksForSatellite(satelliteIndex + 1)
+      if (faulty) {
+        const all = faulty.all || Array.from(new Set([...(faulty.empty || []), ...(faulty.error || [])]))
+        queryModal.value.faultyBlocks = {
+          empty: faulty.empty || [],
+          error: faulty.error || [],
+          all
+        }
+      }
+    } catch (e) {
+      console.warn('获取故障区块集合失败：', e)
+    }
+  }
+
   // 初始化区块区间为全部区块
   const currentTotalBlocks = totalBlocks.value
   if (currentTotalBlocks > 0) {
@@ -930,6 +953,12 @@ const closeQueryModal = () => {
   console.log('closeQueryModal called');
   queryModal.value.visible = false
   queryModal.value.loading = false
+  // 重置降级相关状态
+  queryModal.value.degraded = false
+  queryModal.value.isFaulty = false
+  queryModal.value.faultyBlocks = null
+  queryModal.value.missingBlockIds = []
+  queryModal.value.presentBlockIds = []
   closeContextMenu() // Also close the context menu
 }
 
@@ -944,9 +973,35 @@ const handleQuery = () => {
   queryModal.value.results = []
   queryModal.value.ciphertext = ''
   queryModal.value.decryptionResult = ''
+  // 清空降级集合
+  queryModal.value.missingBlockIds = []
+  queryModal.value.presentBlockIds = []
 
   // 记录查询开始时间
   const startTime = performance.now();
+
+  // 辅助：根据降级模式过滤故障区块
+  const applyDegradedFilter = (ids) => {
+    if (queryModal.value.degraded && queryModal.value.faultyBlocks && Array.isArray(queryModal.value.faultyBlocks.all)) {
+      const badSet = new Set(queryModal.value.faultyBlocks.all)
+      const present = ids.filter(id => !badSet.has(id))
+      const missing = ids.filter(id => badSet.has(id))
+      queryModal.value.presentBlockIds = present
+      queryModal.value.missingBlockIds = missing
+      return present
+    }
+    queryModal.value.presentBlockIds = ids
+    queryModal.value.missingBlockIds = []
+    return ids
+  }
+
+  // 构造结果尾注（解密前不展示降级/故障信息）
+  const degradedFooter = (queryDuration) => {
+    return [
+      '✅ 查询完成，数据已加密存储',
+      `⏱️ 查询耗时: ${queryDuration} 秒`
+    ]
+  }
 
   // 模拟查询过程
   setTimeout(async () => {
@@ -1008,19 +1063,20 @@ const handleQuery = () => {
         const filteredIds = intersectionIds.filter(id =>
           id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
         );
-
+        // 故障卫星：过滤错误/空块
+        const effectiveIds = applyDegradedFilter(filteredIds)
 
         // 生成区块ID集的密文
-        const blockIdString = filteredIds.join(',');
+        const blockIdString = effectiveIds.join(',');
         queryModal.value.ciphertext = await generateHexCipher(blockIdString);
-        // 存储原始数据用于解密显示
-        queryModal.value.originalBlockIds = filteredIds;
+        // 存储原始数据用于解密显示（降级时为“可用ID集”）
+        queryModal.value.originalBlockIds = effectiveIds;
 
         queryModal.value.results = [
           `多关键字查询: [${keywords.map(k => `"${k}"`).join(', ')}]`,
           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
           '',
-          '✅ 查询完成，数据已加密存储'
+          ...degradedFooter(queryDuration)
         ];
       } else {
         queryModal.value.results = [
@@ -1046,19 +1102,20 @@ const handleQuery = () => {
         const filteredIds = allFileIds.filter(id =>
           id >= queryModal.value.blockStart && id <= queryModal.value.blockEnd
         );
-
+        // 故障卫星：过滤错误/空块
+        const effectiveIds = applyDegradedFilter(filteredIds)
 
         // 生成区块ID集的密文
-        const blockIdString = filteredIds.join(',');
+        const blockIdString = effectiveIds.join(',');
         queryModal.value.ciphertext = await generateHexCipher(blockIdString);
         // 存储原始数据用于解密显示
-        queryModal.value.originalBlockIds = filteredIds;
+        queryModal.value.originalBlockIds = effectiveIds;
 
         queryModal.value.results = [
           `查询关键字: "${queryKeyword}"`,
           `区块区间: ${queryModal.value.blockStart}-${queryModal.value.blockEnd}`,
           '',
-          '✅ 查询完成，数据已加密存储'
+          ...degradedFooter(queryDuration)
         ];
       } else {
         // 查找相似的时间格式关键字（用于调试）
@@ -1119,7 +1176,10 @@ const handleDecryptAndVerify = async () => {
         `\n🔢 区块ID: [${queryModal.value.originalBlockIds.join(', ')}]` :
         `\n🔓 解密结果: ${originalData}`
 
-      queryModal.value.decryptionResult = `✅ 解密验证成功${blockIdDisplay}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔐 密文完整性: 验证通过\n🛡️ 数字签名: 有效`
+      // 仅展示区块ID；根据故障状态设置密文完整性
+  const integrityStatus = queryModal.value.isFaulty ? '验证失败' : '验证通过'
+
+  queryModal.value.decryptionResult = `✅ 解密验证成功${blockIdDisplay}\n⏱️ 验证耗时: ${verificationDuration} 秒\n🔐 密文完整性: ${integrityStatus}\n🛡️ 数字签名: 有效`
     } catch (error) {
       queryModal.value.decryptionResult = `❌ 解密验证失败\n\n错误信息: ${error.message}\n⏱️ 验证耗时: ${verificationDuration} 秒`
     }
@@ -2334,33 +2394,34 @@ onUnmounted(() => {
   position: relative;
   background-image: linear-gradient(to right, rgba(0, 255, 0, 0) 0%, rgba(0, 255, 0, 0) 100%), 
                     repeating-linear-gradient(to right, rgba(0, 255, 0, 0) 0px, rgba(0, 255, 0, 0) 15px, rgba(0, 255, 0, 0.8) 15px, rgba(0, 255, 0, 0.8) 20px);
-  background-size: 100% 1px, 20px 10px;
+  background-size: 100% 3px, 20px 12px; /* 线宽从1px加粗到3px，条纹高度相应调整 */
   background-position: 0 0, 0 0;
   background-repeat: no-repeat, repeat-x;
   border-top: none !important;
   animation: moveArrows 1s linear infinite;
 }
 
-/* 篡改和注入消息的红色虚线 */
+/* 篡改和注入消息的红色虚线（加粗版本） */
 .tampered-broadcast, .injected-broadcast, .broadcast-line[style*="rgba(255,0,0,0.8)"] {
   background-image: linear-gradient(to right, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0) 100%), 
                     repeating-linear-gradient(to right, rgba(255, 0, 0, 0) 0px, rgba(255, 0, 0, 0) 15px, rgba(255, 0, 0, 0.8) 15px, rgba(255, 0, 0, 0.8) 20px);
+  background-size: 100% 3px, 20px 12px; /* 红色同样加粗 */
 }
 
-/* 广播箭头样式 */
+/* 广播箭头样式（加粗匹配线宽） */
 .broadcast-arrow {
   position: absolute;
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 4px 0 4px 8px;
+  border-width: 6px 0 6px 12px; /* 原 4/8 -> 6/12 */
   border-color: transparent transparent transparent rgba(0, 255, 0, 0.8);
-  top: -3.5px;
+  top: -5px; /* 向上微调对齐更粗的线 */
   right: 0;
   animation: moveArrows 1s linear infinite;
 }
 
-/* 篡改和注入消息的红色箭头 */
+/* 篡改和注入消息的红色箭头（同步加粗） */
 .tampered-broadcast .broadcast-arrow, .injected-broadcast .broadcast-arrow, .broadcast-line[style*="rgba(255,0,0,0.8)"] .broadcast-arrow {
   border-color: transparent transparent transparent rgba(255, 0, 0, 0.8);
 }
@@ -2378,12 +2439,12 @@ onUnmounted(() => {
 .broadcast-arrow {
   position: absolute;
   right: 0;
-  top: -4px;
+  top: -5px; /* 与3px线条居中 */
   width: 0;
   height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 8px solid rgba(0, 255, 0, 0.8);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 12px solid rgba(0, 255, 0, 0.8);
 }
 
 /* 篡改和注入消息的红色箭头 */

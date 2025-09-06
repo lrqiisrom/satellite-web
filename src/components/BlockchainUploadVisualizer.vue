@@ -123,10 +123,29 @@ const repairSatellite = (satelliteIndex) => {
   return false; // 不是恶意节点，无需修复
 };
 
+// 定义暴露给父组件的方法之前，先定义用于查询故障区块的函数
+const getFaultyBlocksForSatellite = (satelliteIndex) => {
+  // 返回指定卫星的空块与错误块（区块编号从 1 开始）
+  const emptyBlocks = []
+  const errorBlocks = []
+  try {
+    for (let i = 0; i < (blocks?.value?.length || 0); i++) {
+      const status = getSatelliteBlockStatus(satelliteIndex, i)
+      if (status === 'empty') emptyBlocks.push(i + 1)
+      else if (status === 'error') errorBlocks.push(i + 1)
+    }
+  } catch (e) {
+    console.warn('获取故障区块列表失败:', e)
+  }
+  const all = Array.from(new Set([...emptyBlocks, ...errorBlocks]))
+  return { empty: emptyBlocks, error: errorBlocks, all }
+}
+
 // 定义暴露给父组件的方法
 defineExpose({
   isMaliciousSatellite,
-  repairSatellite
+  repairSatellite,
+  getFaultyBlocksForSatellite
 });
 
 // 为恶意节点生成区块状态
@@ -264,13 +283,46 @@ async function hashData(data) {
   const encoder = new TextEncoder();
   const dataBuffer = encoder.encode(data);
 
-  // 使用SHA-256算法计算哈希
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+  // 安全获取全局对象（避免 ESLint no-undef）
+  const getGlobal = () => {
+    if (typeof window !== 'undefined') return window;
+    if (typeof self !== 'undefined') return self;
+    try { return Function('return this')(); } catch (e) { return undefined; }
+  };
+  const g = getGlobal();
 
-  // 将哈希值转换为十六进制字符串
-  return Array.from(new Uint8Array(hashBuffer))
+  // 在非安全上下文（如 http://<IP>）下，部分浏览器不提供 crypto.subtle
+  // 此处做能力检测，并在不支持时回退到同步伪哈希，确保功能可用
+  const subtleAvailable = !!(g && g.isSecureContext && g.crypto && g.crypto.subtle && typeof g.crypto.subtle.digest === 'function');
+
+  if (subtleAvailable) {
+    // 使用浏览器原生 SHA-256
+    const hashBuffer = await g.crypto.subtle.digest('SHA-256', dataBuffer);
+    return bytesToHex(new Uint8Array(hashBuffer));
+  }
+
+  // Fallback: 使用同步伪哈希（32 位滚动哈希，重复填充至 64 位十六进制字符串）
+  return pseudoHash(data);
+}
+
+// 将字节数组转换为十六进制字符串
+function bytesToHex(bytes) {
+  return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+// 伪哈希：与 generateErrorHashSync 中的方案一致，保证长度为 64
+function pseudoHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // 转为 32 位整数
+  }
+  let hex = Math.abs(hash).toString(16);
+  while (hex.length < 64) hex += hex;
+  return hex.substring(0, 64);
 }
 
 // 区块数据

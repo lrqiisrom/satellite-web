@@ -101,7 +101,7 @@
               </div>
               
               <!-- 解密结果显示 -->
-              <div v-if="decryptionResult" class="decryption-result">
+              <div v-if="decryptionResult" class="decryption-result" :class="{ 'is-faulty': isFaulty }">
                 <div class="decryption-title">
                   <strong>解密验证结果:</strong>
                 </div>
@@ -169,6 +169,10 @@ const props = defineProps({
   decryptionResult: {
     type: String,
     default: ''
+  },
+  isFaulty: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -563,6 +567,14 @@ const blockEndModel = computed({
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+/* 故障态（红色） */
+.decryption-result.is-faulty {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+.decryption-result.is-faulty .decryption-title {
+  color: #ef4444;
+}
 .decryption-title {
   color: #10b981;
   font-size: 0.9rem;

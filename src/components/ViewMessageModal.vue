@@ -19,23 +19,12 @@
           <div v-for="(message, index) in messages" :key="index" class="message-item">
             <div class="cipher-display">
               <div class="info-label">接收到的密文:</div>
-              <div class="cipher-text">
-                <!-- 显示密文，如果是被篡改或注入的消息，则高亮显示 -->
-                <template v-if="message.isTampered">
-                  <span v-for="(char, charIndex) in message.ciphertext.split('')" :key="charIndex"
-                    :class="{'tampered-text': message.originalCiphertext && message.ciphertext.charAt(charIndex) !== message.originalCiphertext.charAt(charIndex)}">
-                    {{ char }}
-                  </span>
-                </template>
-                <template v-else-if="message.isInjected">
-                  <span v-for="(char, charIndex) in message.ciphertext.split('')" :key="charIndex"
-                    :class="{'injected-text': charIndex >= (message.originalCiphertext ? message.originalCiphertext.length : 0)}">
-                    {{ char }}
-                  </span>
-                </template>
-                <template v-else>
-                  {{ message.ciphertext }}
-                </template>
+              <div class="cipher-text" :class="{ 'post-decrypt-red': activeMessageIndex === index && (tamperDetected || injectionDetected) && result }">
+                <!-- 解密前不暴露状态：统一按普通样式显示密文；解密后如检测到问题才标红 -->
+                {{ message.ciphertext }}
+              </div>
+              <div v-if="activeMessageIndex === index && (tamperDetected || injectionDetected) && result" class="tamper-tip">
+                （监测到密文被{{ tamperDetected ? '篡改' : '注入' }}）
               </div>
             </div>
               
@@ -97,6 +86,9 @@ const activeMessageIndex = ref(-1) // 当前选中的消息索引
 const result = ref('') // 解密结果
 const isSuccess = ref(false) // 解密是否成功
 const decryptedMessage = ref('') // 解密后的消息
+// 解密后再暴露的状态标记
+const tamperDetected = ref(false)
+const injectionDetected = ref(false)
 
 // 计算结果状态文本
 const resultStatus = computed(() => {
@@ -150,10 +142,11 @@ const decryptMessage = async (message) => {
     
     if (isTampered) {
       console.log('检测到篡改消息')
+      tamperDetected.value = true
+      injectionDetected.value = false
       result.value = 'failure'
       isSuccess.value = false
       decryptedMessage.value = ''
-      
       emit('message-decrypted', {
         satelliteIndex: props.satelliteIndex,
         ciphertext: message.ciphertext,
@@ -164,13 +157,14 @@ const decryptMessage = async (message) => {
         decryptedMessage: '密文被篡改，解密失败',
         isTampered: true
       })
-      return
+      // 不再 return，保证 UI 有 result 触发后续展示
     } else if (isInjected) {
       console.log('检测到注入消息')
+      tamperDetected.value = false
+      injectionDetected.value = true
       result.value = 'failure'
       isSuccess.value = false
       decryptedMessage.value = ''
-      
       emit('message-decrypted', {
         satelliteIndex: props.satelliteIndex,
         ciphertext: message.ciphertext,
@@ -181,7 +175,7 @@ const decryptMessage = async (message) => {
         decryptedMessage: '密文被注入，解密失败',
         isInjected: true
       })
-      return
+      // 不再 return，保证 UI 有 result 触发后续展示
     }
     
     const decryptResult = await satelliteEncryptionService.decryptMessage({
@@ -226,6 +220,8 @@ const resetDecryptionState = () => {
   result.value = ''
   isSuccess.value = false
   decryptedMessage.value = ''
+  tamperDetected.value = false
+  injectionDetected.value = false
 }
 
 // 关闭模态框
@@ -408,7 +404,22 @@ const close = () => {
 }
 
 .decrypted-message {
-  margin-top: 10px;
+  margin-top: 15px;
+  padding: 12px;
+  background: rgba(31, 41, 55, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(75, 85, 99, 0.6);
+}
+
+/* 解密后才标红 */
+.cipher-text.post-decrypt-red {
+  color: #ef4444;
+}
+.tamper-tip {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ef4444;
+  opacity: 0.9;
 }
 
 .message-text {
