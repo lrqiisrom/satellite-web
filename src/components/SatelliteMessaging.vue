@@ -329,6 +329,11 @@ defineExpose({
 </script>
 
 <style scoped>
+/* 侧边栏打开时容器不需要额外处理，但为安全在组件根上限定盒模型 */
+.satellite-messaging {
+  box-sizing: border-box;
+}
+
 .satellite-messaging {
   position: fixed;
   top: 0;

@@ -50,6 +50,11 @@ const props = defineProps({
   uploadedData: {
     type: Array,
     default: () => []
+  },
+  // 新增：控制渐进展示总时长（毫秒），默认约2秒
+  revealDurationMs: {
+    type: Number,
+    default: 2000
   }
 });
 
@@ -353,68 +358,89 @@ watch(() => props.uploadedData, (newData) => {
   }
 }, { deep: true });
 
-// 处理上传的数据，模拟区块链上链过程
+// 基于文件数据创建区块（使用快速哈希，加速慢机生成）
+const createBlockFromFileData = (fileData, index) => {
+  const blockDataStr = fileData.fileId + '-' + fileData.timestamp;
+  const encryptedData = pseudoHash(blockDataStr); // 使用同步快速哈希避免阻塞
+  return {
+    number: index + 1,
+    hash: generateRandomHash(),
+    timestamp: Date.now() + index * 1000,
+    transactions: [fileData],
+    encryptedData,
+    status: 'confirmed',
+    active: false,
+    confirmed: true,
+    fileId: fileData.fileId
+  };
+};
+
+// 动画渐进展示，确保总时长约等于 props.revealDurationMs
+const animateRevealBlocks = (finalBlocks) => {
+  blocks.value = [];
+  const total = finalBlocks.length;
+  if (total === 0) {
+    isUploading.value = false;
+    emit('uploadComplete');
+    return;
+  }
+
+  const start = performance.now();
+  const duration = Math.max(200, Number(props.revealDurationMs) || 2000);
+
+  const step = () => {
+    const now = performance.now();
+    const elapsed = now - start;
+    const progress = Math.min(1, elapsed / duration);
+    const targetCount = Math.max(1, Math.ceil(progress * total));
+
+    if (blocks.value.length !== targetCount) {
+      // 更新到目标数量，并仅将最后一个标记为 active
+      const slice = finalBlocks.slice(0, targetCount).map((b, i) => ({
+        ...b,
+        active: i === targetCount - 1,
+        confirmed: true
+      }));
+      blocks.value = slice;
+    }
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // 最终收尾，确保全部显示
+      blocks.value = finalBlocks.map((b, i) => ({ ...b, active: i === finalBlocks.length - 1, confirmed: true }));
+      isUploading.value = false;
+      emit('uploadComplete');
+    }
+  };
+
+  requestAnimationFrame(step);
+};
+
+// 处理上传的数据，模拟区块链上链过程（改造：构建 -> 渐进展示）
 const processUploadedData = async (data) => {
   isUploading.value = true;
-
-  // 开始处理上链数据
 
   // 清空现有区块
   blocks.value = [];
 
-  // 不再重新初始化恶意节点，保持组件挂载时确定的恶意节点不变
   // 创建文件ID到区块的映射，确保每个文件只创建一个区块
   const fileIdMap = new Map();
 
-  // 不再需要计算唯一文件ID、总数和已处理数量，因为进度条已删除
-  // const uniqueFileIds = new Set(data.map(item => item.fileId));
-  // const totalUniqueFiles = uniqueFileIds.size;
-  // let processedUniqueFiles = 0;
-
-  // 首先遍历数据，为每个唯一的fileId创建一个区块
+  // 先遍历数据，为每个唯一的fileId创建一个区块（使用快速哈希，避免慢机长时间等待）
   for (let i = 0; i < data.length; i++) {
     const fileData = data[i];
+    if (fileIdMap.has(fileData.fileId)) continue;
 
-    // 如果这个文件ID已经有区块了，就跳过
-    if (fileIdMap.has(fileData.fileId)) {
-      continue;
-    }
-
-    // 使用哈希替代加密，显著提高速度
-    const blockDataStr = fileData.fileId + '-' + fileData.timestamp;
-    // 使用简单的哈希函数替代加密
-    const encryptedData = await hashData(blockDataStr);
-
-    // 创建新区块，直接设置为已确认状态
-    const newBlock = {
-      number: fileIdMap.size + 1,
-      hash: generateRandomHash(),
-      timestamp: Date.now() + fileIdMap.size * 1000, // 每个区块时间戳递增
-      transactions: [fileData], // 每个文件作为一个交易
-      encryptedData: encryptedData, // 添加加密数据
-      status: 'confirmed', // 直接设置为已确认状态
-      active: true, // 设置为活动状态
-      confirmed: true, // 设置为已确认
-      fileId: fileData.fileId // 记录文件ID以便识别
-    };
-
-    // 将区块添加到映射中
+    const newBlock = createBlockFromFileData(fileData, fileIdMap.size);
     fileIdMap.set(fileData.fileId, newBlock);
-
-    // 上链进度更新代码已删除
-
-    // 将当前区块添加到区块数组中，实现实时显示
-    blocks.value = Array.from(fileIdMap.values());
-
-    // 不再需要延迟，直接处理下一个文件
   }
 
-  // 上链进度显示代码已删除
+  // 获得最终区块列表并按编号排序
+  const finalBlocks = Array.from(fileIdMap.values()).sort((a, b) => a.number - b.number);
 
-  // 所有区块已添加，上链完成
-  isUploading.value = false;
-  // 触发上链完成事件
-  emit('uploadComplete');
+  // 渐进展示，目标时长为 props.revealDurationMs（默认2秒）
+  animateRevealBlocks(finalBlocks);
 };
 
 // 注释掉原来的模拟区块确认过程，因为现在上链进度是在processUploadedData函数中直接处理的

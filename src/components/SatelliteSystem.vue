@@ -19,7 +19,7 @@
     </div>
 
     <!-- Blockchain Upload Visualizer -->
-    <BlockchainUploadVisualizer ref="blockchainVisualizerRef" :satellite-count="props.satelliteCount" :uploaded-data="uploadedData" @upload-complete="handleUploadComplete" @malicious-satellites-initialized="syncMaliciousSatellitesToFaults" />
+    <BlockchainUploadVisualizer ref="blockchainVisualizerRef" :satellite-count="props.satelliteCount" :uploaded-data="uploadedData" :reveal-duration-ms="2000" @upload-complete="handleUploadComplete" @malicious-satellites-initialized="syncMaliciousSatellitesToFaults" />
 
     <!-- Main container -->
     <div class="system-container">

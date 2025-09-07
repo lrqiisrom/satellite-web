@@ -160,7 +160,7 @@ defineExpose({
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.7);
-  z-index: 20000; /* 进一步提高遮罩层z-index，确保高于所有其他元素 */
+  z-index: 20000; /* 进一步提高了遮罩层z-index，确保高于所有其他元素 */
   pointer-events: auto; /* 确保可以接收点击事件 */
 }
 
@@ -173,12 +173,13 @@ defineExpose({
   background: rgba(15, 23, 42, 0.95);
   border-left: 1px solid #475569;
   box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
-  z-index: 20001; /* 进一步提高侧边栏z-index，确保高于遮罩层和所有其他元素 */
+  z-index: 20001; /* 提高了侧边栏z-index，确保高于遮罩层和所有其他元素 */
   transition: right 0.3s ease-in-out;
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
   pointer-events: auto; /* 确保可以接收点击事件 */
+  box-sizing: border-box; /* 确保侧栏内宽度计算稳定 */
 }
 
 .broadcast-side-panel.visible {
@@ -220,6 +221,7 @@ defineExpose({
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  box-sizing: border-box; /* 防止子元素100%宽度时因内边距产生溢出 */
 }
 
 .sender-info,
@@ -254,6 +256,7 @@ defineExpose({
   color: #f8fafc;
   font-size: 1rem;
   transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box; /* 防止由于边框和内边距导致的宽度溢出 */
 }
 
 .receiver-select:focus,
