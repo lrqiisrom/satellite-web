@@ -28,7 +28,7 @@
 
         <div class="cipher-result" v-if="ciphertext">
           <div class="info-label">密文:</div>
-          <div class="cipher-text">{{ ciphertext }}</div>
+          <div class="cipher-text" v-html="formattedCiphertext"></div>
         </div>
 
         <div class="action-buttons">
@@ -94,6 +94,13 @@ const availableReceivers = computed(() => {
 // 验证是否可以加密
 const canEncrypt = computed(() => {
   return selectedReceiver.value !== -1 && message.value.trim() !== ''
+})
+
+// 格式化密文显示，支持多行
+const formattedCiphertext = computed(() => {
+  if (!ciphertext.value) return ''
+  // 将换行符替换为HTML换行标签
+  return ciphertext.value.split('\n').join('<br>')
 })
 
 // 监听visible变化，重置状态

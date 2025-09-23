@@ -20,9 +20,9 @@
             <div class="cipher-display">
               <div class="info-label">接收到的密文:</div>
               <div class="cipher-text" :class="{ 'post-decrypt-red': activeMessageIndex === index && (tamperDetected || injectionDetected) && result }">
-                <!-- 解密前不暴露状态：统一按普通样式显示密文；解密后如检测到问题才标红 -->
-                {{ message.ciphertext }}
-              </div>
+                  <!-- 解密前不暴露状态：统一按普通样式显示密文；解密后如检测到问题才标红 -->
+                  <div v-html="formatCiphertext(message.ciphertext)"></div>
+                </div>
               <div v-if="activeMessageIndex === index && (tamperDetected || injectionDetected) && result" class="tamper-tip">
                 （监测到密文被{{ tamperDetected ? '篡改' : '注入' }}）
               </div>
@@ -63,6 +63,11 @@
 <script setup>
 import { ref, defineProps, defineEmits, computed } from 'vue'
 import satelliteEncryptionService from '../services/SatelliteEncryptionService'
+
+// 格式化密文显示
+const formatCiphertext = (ciphertext) => {
+  return ciphertext.replace(/\n/g, '<br>')
+}
 
 const props = defineProps({
   visible: {

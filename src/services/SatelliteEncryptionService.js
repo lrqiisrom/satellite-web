@@ -42,19 +42,46 @@ class SatelliteEncryptionService {
     // 获取或生成密钥
     const key = this.getKeyForSatellitePair(senderIndex, receiverIndex)
     
-    // 加密消息
-    const ciphertext = await this.cryptoService.encryptText(message, key)
-    
-    // 存储消息元数据
-    const messageId = Date.now().toString() + Math.random().toString(36).substring(2, 15)
-    this.messageMetadata[ciphertext] = {
-      id: messageId,
-      senderIndex,
-      receiverIndex,
-      timestamp: Date.now()
+    // 检查消息是否包含多个关键字（以逗号分隔）
+    if (message.includes(',')) {
+      // 分割关键字
+      const keywords = message.split(',').map(keyword => keyword.trim()).filter(keyword => keyword !== '')
+      
+      // 分别加密每个关键字
+      const encryptedKeywords = await Promise.all(
+        keywords.map(async (keyword) => {
+          const ciphertext = await this.cryptoService.encryptText(keyword, key)
+          
+          // 为每个关键字存储元数据
+          const messageId = Date.now().toString() + Math.random().toString(36).substring(2, 15)
+          this.messageMetadata[ciphertext] = {
+            id: messageId,
+            senderIndex,
+            receiverIndex,
+            timestamp: Date.now()
+          }
+          
+          return ciphertext
+        })
+      )
+      
+      // 返回所有加密关键字，用换行符连接
+      return encryptedKeywords.join('\n')
+    } else {
+      // 单个关键字的情况，保持原有逻辑
+      const ciphertext = await this.cryptoService.encryptText(message, key)
+      
+      // 存储消息元数据
+      const messageId = Date.now().toString() + Math.random().toString(36).substring(2, 15)
+      this.messageMetadata[ciphertext] = {
+        id: messageId,
+        senderIndex,
+        receiverIndex,
+        timestamp: Date.now()
+      }
+      
+      return ciphertext
     }
-    
-    return ciphertext
   }
 
   /**
@@ -80,13 +107,40 @@ class SatelliteEncryptionService {
       // 获取密钥
       const key = this.getKeyForSatellitePair(senderIndex, receiverIndex)
       
-      // 解密消息
-      const decryptedMessage = await this.cryptoService.decryptHex(ciphertext, key)
-      
-      return {
-        success: true,
-        message: decryptedMessage,
-        error: null
+      // 检查是否是多行密文（多个关键字）
+      if (ciphertext.includes('\n')) {
+        // 分割多行密文
+        const ciphertextLines = ciphertext.split('\n')
+        
+        // 分别解密每行密文
+        const decryptedLines = await Promise.all(
+          ciphertextLines.map(async (line) => {
+            try {
+              return await this.cryptoService.decryptHex(line, key)
+            } catch (err) {
+              console.error('解密单行密文失败:', err)
+              return '[解密失败]'
+            }
+          })
+        )
+        
+        // 将解密后的多个关键字用逗号连接
+        const decryptedMessage = decryptedLines.join(', ')
+        
+        return {
+          success: true,
+          message: decryptedMessage,
+          error: null
+        }
+      } else {
+        // 单行密文的情况，保持原有逻辑
+        const decryptedMessage = await this.cryptoService.decryptHex(ciphertext, key)
+        
+        return {
+          success: true,
+          message: decryptedMessage,
+          error: null
+        }
       }
     } catch (error) {
       return {
