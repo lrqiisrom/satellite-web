@@ -21,7 +21,9 @@
         
         <div class="cipher-display">
           <div class="info-label">原始密文:</div>
-          <div class="cipher-text">{{ ciphertext }}</div>
+          <div class="cipher-list">
+            <div v-for="(line, idx) in ciphertextLines" :key="idx" class="cipher-item">{{ line }}</div>
+          </div>
         </div>
         
         <div class="intercept-actions">
@@ -56,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, defineProps, defineEmits } from 'vue'
+import { ref, defineProps, defineEmits, computed } from 'vue'
 
 const props = defineProps({
   visible: {
@@ -171,6 +173,21 @@ const close = () => {
   emit('update:visible', false)
   emit('close')
 }
+
+// 原始密文按空白字符分割为多行卡片（支持换行与空格）；若无空白，则按64字符分块
+const ciphertextLines = computed(() => {
+  const text = props.ciphertext || ''
+  if (!text.trim()) return []
+  if (/\s/.test(text)) {
+    return text.split(/\s+/).filter(s => s.trim().length > 0)
+  }
+  const size = 64
+  const res = []
+  for (let i = 0; i < text.length; i += size) {
+    res.push(text.slice(i, i + size))
+  }
+  return res
+})
 </script>
 
 <style scoped>
@@ -317,6 +334,40 @@ const close = () => {
   font-size: 0.9rem;
   max-height: 100px;
   overflow-y: auto;
+}
+
+/* 原始密文：按行卡片展示 */
+.cipher-list {
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(51, 65, 85, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+}
+.cipher-list::-webkit-scrollbar { width: 6px; }
+.cipher-list::-webkit-scrollbar-track { background: transparent; }
+.cipher-list::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 6px; }
+.cipher-list::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.9); }
+
+.cipher-item {
+  padding: 10px 12px;
+  background: rgba(31, 41, 55, 0.7);
+  border-radius: 8px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #e5e7eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.cipher-item:hover {
+  background: rgba(51, 65, 85, 0.7);
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 @keyframes modalFadeIn {

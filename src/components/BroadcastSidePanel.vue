@@ -31,7 +31,9 @@
 
         <div class="cipher-result" v-if="ciphertext">
           <div class="info-label">密文:</div>
-          <div class="cipher-text">{{ ciphertext }}</div>
+          <div class="cipher-list">
+            <div v-for="(line, idx) in ciphertextLines" :key="idx" class="cipher-item">{{ line }}</div>
+          </div>
         </div>
 
         <div class="action-buttons">
@@ -76,6 +78,9 @@ const selectedReceiver = ref(-1)
 const message = ref('')
 const ciphertext = ref('')
 const result = ref('')
+
+// 将密文按行拆分，逐条渲染为独立框
+const ciphertextLines = computed(() => (ciphertext.value ? ciphertext.value.split('\n') : []))
 
 // 关闭面板
 const closePanel = () => {
@@ -266,16 +271,22 @@ defineExpose({
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 
-.cipher-text {
-  padding: 12px;
+.cipher-list {
+  max-height: 320px; /* 增大展示区域高度，减少滚动 */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cipher-item {
+  padding: 10px 12px;
   background: rgba(51, 65, 85, 0.5);
   border: 1px solid #475569;
   border-radius: 8px;
   color: #f8fafc;
   font-family: monospace;
   word-break: break-all;
-  max-height: 100px;
-  overflow-y: auto;
 }
 
 .action-buttons {

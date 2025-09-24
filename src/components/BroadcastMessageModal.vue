@@ -28,7 +28,9 @@
 
         <div class="cipher-result" v-if="ciphertext">
           <div class="info-label">密文:</div>
-          <div class="cipher-text" v-html="formattedCiphertext"></div>
+          <div class="cipher-list">
+            <div v-for="(line, idx) in ciphertextLines" :key="idx" class="cipher-item">{{ line }}</div>
+          </div>
         </div>
 
         <div class="action-buttons">
@@ -136,6 +138,8 @@ const broadcastMessage = () => {
   })
   result.value = `📡 密文已从卫星${props.satelliteIndex + 1} 广播到所有卫星`
 }
+// 将密文按行拆分，逐条渲染为独立框
+const ciphertextLines = computed(() => (ciphertext.value ? ciphertext.value.split('\n') : []))
 </script>
 
 <style scoped>
@@ -284,16 +288,22 @@ const broadcastMessage = () => {
   margin-top: 5px;
 }
 
-.cipher-text {
-  padding: 10px;
-  background-color: #1e293b;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 12px;
-  word-break: break-all;
-  max-height: 80px;
+.cipher-list {
+  max-height: 320px; /* 提升弹窗中密文区域高度 */
   overflow-y: auto;
-  border: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cipher-item {
+  padding: 10px 12px;
+  background: rgba(51, 65, 85, 0.5);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-family: monospace;
+  word-break: break-all;
 }
 
 .operation-result {

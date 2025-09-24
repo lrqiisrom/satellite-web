@@ -19,10 +19,16 @@
           <div v-for="(message, index) in messages" :key="index" class="message-item">
             <div class="cipher-display">
               <div class="info-label">接收到的密文:</div>
-              <div class="cipher-text" :class="{ 'post-decrypt-red': activeMessageIndex === index && (tamperDetected || injectionDetected) && result }">
-                  <!-- 解密前不暴露状态：统一按普通样式显示密文；解密后如检测到问题才标红 -->
-                  <div v-html="formatCiphertext(message.ciphertext)"></div>
+              <div class="cipher-list">
+                <div
+                  v-for="(line, li) in splitCiphertext(message.ciphertext)"
+                  :key="li"
+                  class="cipher-item"
+                  :class="{ 'post-decrypt-red': activeMessageIndex === index && (tamperDetected || injectionDetected) && result }"
+                >
+                  {{ line }}
                 </div>
+              </div>
               <div v-if="activeMessageIndex === index && (tamperDetected || injectionDetected) && result" class="tamper-tip">
                 （监测到密文被{{ tamperDetected ? '篡改' : '注入' }}）
               </div>
@@ -37,8 +43,9 @@
               </div>
               
               <div class="decryption-result" v-if="result">
-                <div class="result-status" :class="{ 'success': isSuccess, 'error': !isSuccess }">
-                  {{ resultStatus }}
+                <div class="result-banner" :class="isSuccess ? 'success' : ((tamperDetected || injectionDetected) ? 'warning' : 'error')">
+                  <span class="icon">{{ resultIcon }}</span>
+                  <span class="text">{{ resultStatus }}</span>
                 </div>
                 <div class="decrypted-message" v-if="decryptedMessage">
                   <div class="info-label">解密后的消息:</div>
@@ -65,8 +72,15 @@ import { ref, defineProps, defineEmits, computed } from 'vue'
 import satelliteEncryptionService from '../services/SatelliteEncryptionService'
 
 // 格式化密文显示
+// eslint-disable-next-line no-unused-vars
 const formatCiphertext = (ciphertext) => {
   return ciphertext.replace(/\n/g, '<br>')
+}
+
+// 新增：将密文拆分为多行数组
+const splitCiphertext = (ciphertext) => {
+  if (!ciphertext || typeof ciphertext !== 'string') return []
+  return ciphertext.split('\n').filter(s => s.trim().length > 0)
 }
 
 const props = defineProps({
@@ -97,26 +111,27 @@ const injectionDetected = ref(false)
 
 // 计算结果状态文本
 const resultStatus = computed(() => {
-  // 获取当前消息
-  const currentMessage = activeMessageIndex.value >= 0 ? props.messages[activeMessageIndex.value] : null;
-  
+  const currentMessage = activeMessageIndex.value >= 0 ? props.messages[activeMessageIndex.value] : null
   if (isSuccess.value) {
-    // 检查当前消息是否是用户发送的
     if (currentMessage?.senderIndex === props.satelliteIndex) {
-      return "✅ 这是您发送的消息，解密成功！"
-    } else {
-      return "✅ 有权解密，解密成功！密文未被篡改"
+      return '解密成功（当前消息由您发送）'
     }
+    return '解密成功（您拥有解密权限）'
   } else {
-    // 检查是否是篡改或注入消息
     if (currentMessage?.isTampered) {
-      return "密文被篡改，解密失败"
+      return '解密失败：检测到密文被篡改'
     } else if (currentMessage?.isInjected) {
-      return "密文被注入，解密失败"
-    } else {
-      return "❌ 未被授予解密权限！解密失败！"
+      return '解密失败：检测到密文被注入'
     }
+    return '解密失败：您没有该消息的解密权限'
   }
+})
+
+// 图标：成功/告警(篡改/注入)/错误(无权限)
+const resultIcon = computed(() => {
+  if (isSuccess.value) return '✅'
+  if (tamperDetected.value || injectionDetected.value) return '⚠️'
+  return '❌'
 })
 
 // 选择消息并立即解密
@@ -320,9 +335,11 @@ const close = () => {
 }
 
 .info-label {
-  color: #94a3b8;
+  color: #cbd5e1;
   font-weight: 500;
   margin-right: 10px;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
 }
 
 .info-value {
@@ -353,72 +370,63 @@ const close = () => {
   margin-bottom: 15px;
 }
 
-.cipher-text {
-  padding: 10px;
-  background: rgba(51, 65, 85, 0.5);
-  border-radius: 6px;
-  font-family: monospace;
-  color: #94a3b8;
-  margin-top: 5px;
-  word-break: break-all;
-  font-size: 0.9rem;
-  max-height: 100px;
+/* 新增：密文列表样式（容器及单条密文框） */
+.cipher-list {
+  max-height: 320px;
   overflow-y: auto;
-}
-
-.decrypt-button {
-  width: 100%;
-  padding: 8px 12px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border: none;
-  border-radius: 6px;
-  color: white;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-}
-
-.decrypt-button:hover {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  transform: translateY(-1px);
-}
-
-.decryption-result {
-  margin-top: 15px;
-  padding: 10px;
-  border-radius: 6px;
-  background: rgba(51, 65, 85, 0.3);
-}
-
-.result-status {
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.result-status.success {
-  color: #10b981;
-}
-
-.result-status.error {
-  color: #ef4444;
-}
-
-.decrypted-message {
-  margin-top: 15px;
-  padding: 12px;
-  background: rgba(31, 41, 55, 0.6);
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(51, 65, 85, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
-  border: 1px solid rgba(75, 85, 99, 0.6);
+}
+.cipher-list::-webkit-scrollbar {
+  width: 6px;
+}
+.cipher-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cipher-list::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.8);
+  border-radius: 6px;
+}
+.cipher-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
 }
 
-/* 解密后才标红 */
-.cipher-text.post-decrypt-red {
-  color: #ef4444;
+.cipher-item {
+  padding: 10px 12px;
+  background: rgba(31, 41, 55, 0.7);
+  border-radius: 8px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #e5e7eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.cipher-item:hover {
+  background: rgba(51, 65, 85, 0.7);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* 解密后异常时的强调（如在其他组件已有全局样式，这里可作为兜底） */
+.post-decrypt-red {
+  position: relative;
+  border-color: rgba(244, 63, 94, 0.45) !important;
+}
+.post-decrypt-red::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  background: rgba(244, 63, 94, 0.85);
 }
 .tamper-tip {
   margin-top: 4px;
@@ -455,5 +463,72 @@ const close = () => {
 .injected-text {
   color: red;
   font-weight: bold;
+}
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.decrypt-button {
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.35);
+}
+.decrypt-button:hover {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 20px rgba(29, 78, 216, 0.4);
+}
+.decrypt-button:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 12px rgba(29, 78, 216, 0.35);
+}
+.decrypt-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 结果展示区域样式 */
+.decryption-result { margin-top: 12px; }
+.result-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  margin-top: 10px;
+}
+.result-banner .icon { font-size: 1rem; line-height: 1; }
+.result-banner .text { font-size: 0.95rem; }
+.result-banner.success {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #d1fae5;
+}
+.result-banner.warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+.result-banner.error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fecaca;
 }
 </style>
