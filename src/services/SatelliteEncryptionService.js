@@ -109,37 +109,43 @@ class SatelliteEncryptionService {
       
       // 检查是否是多行密文（多个关键字）
       if (ciphertext.includes('\n')) {
-        // 分割多行密文
         const ciphertextLines = ciphertext.split('\n')
-        
-        // 分别解密每行密文
         const decryptedLines = await Promise.all(
           ciphertextLines.map(async (line) => {
             try {
               return await this.cryptoService.decryptHex(line, key)
             } catch (err) {
-              console.error('解密单行密文失败:', err)
-              return '[解密失败]'
+              console.error('解密单行密文失败(返回错误明文替代):', err)
+              return this.makeGibberishFromHex(line)
             }
           })
         )
-        
-        // 将解密后的多个关键字用逗号连接
         const decryptedMessage = decryptedLines.join(', ')
-        
         return {
           success: true,
           message: decryptedMessage,
-          error: null
+          error: null,
+          lines: decryptedLines
         }
       } else {
-        // 单行密文的情况，保持原有逻辑
-        const decryptedMessage = await this.cryptoService.decryptHex(ciphertext, key)
-        
-        return {
-          success: true,
-          message: decryptedMessage,
-          error: null
+        // 单行密文
+        try {
+          const decryptedMessage = await this.cryptoService.decryptHex(ciphertext, key)
+          return {
+            success: true,
+            message: decryptedMessage,
+            error: null,
+            lines: [decryptedMessage]
+          }
+        } catch (err) {
+          console.error('解密密文失败(返回错误明文替代):', err)
+          const wrong = this.makeGibberishFromHex(ciphertext)
+          return {
+            success: true,
+            message: wrong,
+            error: null,
+            lines: [wrong]
+          }
         }
       }
     } catch (error) {
@@ -166,6 +172,26 @@ class SatelliteEncryptionService {
   reset() {
     this.satelliteKeys = {}
     this.messageMetadata = {}
+  }
+
+  /**
+   * 将密文转换为可读的“错误明文”（演示用）
+   * 取去除IV后的密文字节，映射到可打印ASCII
+   */
+  makeGibberishFromHex(hex, limit = 64) {
+    try {
+      const combined = this.cryptoService.hexToBytes(hex || '')
+      const cipher = combined.slice(12) // 去掉12字节IV
+      const len = Math.min(cipher.length, limit)
+      const out = []
+      for (let i = 0; i < len; i++) {
+        const ch = 32 + (cipher[i] % 95) // 映射到可打印区间
+        out.push(String.fromCharCode(ch))
+      }
+      return out.join('') || '[错误明文]'
+    } catch (e) {
+      return '[错误明文]'
+    }
   }
 }
 
